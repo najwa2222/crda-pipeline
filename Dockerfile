@@ -3,11 +3,12 @@ FROM node:14
 WORKDIR /usr/src/app
 
 COPY package*.json ./
-
 RUN npm install
 
-COPY . .
+# Copy all files with proper directory structure
+COPY views/ ./views/
+COPY public/ ./public/
+COPY app.js ./
 
 EXPOSE 4200
-
-CMD [ "node", "app.js" ]
+CMD ["node", "app.js"]

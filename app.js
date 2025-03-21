@@ -4,9 +4,6 @@ const expressHbs = require('express-handlebars');
 const mysql = require('mysql');
 const cors = require('cors');
 const session = require('express-session');
-const userRoutes = require('./routes/userRoutes');
-const documentRoutes = require('./routes/documentRoutes');
-const reportRoutes = require('./routes/reportRoutes');  
 const methodOverride = require('method-override');
 // Initialization of the Express application
 const app = express();
@@ -24,11 +21,13 @@ app.use((req, res, next) => {
 // Middleware Middleware Middleware Middleware Middleware Middleware
 
 // New configuration
+// Replace existing connection with:
 const connection = mysql.createConnection({
-  host: process.env.MYSQL_HOST || 'localhost',
+  host: process.env.MYSQL_HOST || 'mysql',
   user: process.env.MYSQL_USER || 'root',
   password: process.env.MYSQL_PASSWORD || '',
-  database: process.env.MYSQL_DATABASE || 'base_crda'
+  database: process.env.MYSQL_DATABASE || 'base_crda',
+  port: process.env.MYSQL_PORT || 3306
 });
 
 // Establish a connection to the database
@@ -39,7 +38,13 @@ connection.connect((err) => {
   }
   console.log('Connected to MySQL server as ID ' + connection.threadId);
 });
-
+// Add before other routes
+app.get('/health', (req, res) => {
+  connection.query('SELECT 1', (err) => {
+    if (err) return res.status(500).send('DB connection failed');
+    res.status(200).send('OK');
+  });
+});
 // Middleware setup
 app.use(express.static('public'));
 app.use(cors());
@@ -518,15 +523,6 @@ app.delete('/api/services/:id', isAuthenticated, (req, res) => {
 
 // end delete Routes
 
-
-// Routes for users and documents
-/*
-app.use('/api/users', userRoutes);
-app.use('/api/documents', documentRoutes);
-app.use('/api/reports', reportRoutes);
-*/
-
-
 // RESULTS// RESULTS// RESULTS// RESULTS// RESULTS// RESULTS// RESULTS// RESULTS// RESULTS// RESULTS// RESULTS
 
 app.get('/results', isAuthenticated, isDirecteur, (req, res) => {
@@ -963,6 +959,7 @@ app.use((err, req, res, next) => {
     error: process.env.NODE_ENV === 'development' ? err : {}
   });
 });
+
 // Start the server
 const PORT = process.env.PORT || 4200;
 app.listen(PORT, () => {

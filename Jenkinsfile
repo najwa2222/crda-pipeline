@@ -5,6 +5,7 @@ pipeline {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
         KUBECONFIG = credentials('kubeconfig')
         REPO_URL = 'https://github.com/najwa2222/crda-pipeline.git'
+        KUBE_DIR = "kubernetes"  // Windows path to Kubernetes manifests
     }
 
     stages {
@@ -43,12 +44,15 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                script {
-                    sh 'kubectl apply -f kubernetes/mysql-secret.yaml'
-                    sh 'kubectl apply -f kubernetes/mysql-pv.yaml'
-                    sh 'kubectl apply -f kubernetes/mysql-deployment.yaml'
-                    sh 'kubectl apply -f kubernetes/app-deployment.yaml'
-                }
+                bat '''
+                    kubectl apply -f %KUBE_DIR%/mysql-secret.yaml
+                    kubectl apply -f %KUBE_DIR%/mysql-pv.yaml
+                    kubectl apply -f %KUBE_DIR%/mysql-deployment.yaml
+                    kubectl apply -f %KUBE_DIR%/app-deployment.yaml
+                    
+                    kubectl get pods
+                    kubectl get services
+                '''
             }
         }
     }
