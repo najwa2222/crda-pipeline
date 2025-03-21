@@ -4,12 +4,21 @@ pipeline {
     environment {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
         KUBECONFIG = credentials('kubeconfig')
+        REPO_URL = 'https://github.com/najwa2222/crda-pipeline.git'
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/your-repo/crda-app.git'
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/main']],
+                    extensions: [],
+                    userRemoteConfigs: [[
+                        url: env.REPO_URL,
+                        credentialsId: 'github-creds'
+                    ]]
+                ])
             }
         }
 
