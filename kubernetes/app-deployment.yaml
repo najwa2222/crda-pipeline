@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-deployment
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: crda-app
+    spec:
+      containers:
+      - name: crda-app
+        image: najwa22/crda-app:latest
+        env:
+        - name: MYSQL_HOST
+          value: mysql-service  # Matches Kubernetes service name
+        - name: MYSQL_USER
+          value: root
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        - name: MYSQL_DATABASE
+          value: base_crda
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: crda-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: crda-app
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 4200
