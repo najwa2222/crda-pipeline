@@ -162,7 +162,7 @@ app.get('/getservices', isAuthenticated, isChef, (req, res) => {
   connection.query(sql, (err, results) => {
     if (err) return res.status(500).send('Database error');
     res.render('afficher', {
-      title: ' المحتوى',
+      title: 'المحتوى',
       services: results,
       helpers: { eq: (a, b) => a === b }
     });
