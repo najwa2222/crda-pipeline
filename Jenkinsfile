@@ -47,20 +47,20 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 bat """
-                        kubectl apply -f %KUBE_DIR%/mysql-secret.yaml
-                        kubectl apply -f %KUBE_DIR%/mysql-pv.yaml
-                        kubectl apply -f %KUBE_DIR%/mysql-configmap.yaml
-                        kubectl apply -f %KUBE_DIR%/mysql-deployment.yaml
-
-                        # Fixed PowerShell command
-                        powershell \"(Get-Content %KUBE_DIR%/app-deployment.yaml) -replace '\\`${BUILD_ID}', '${env.BUILD_ID}' | Set-Content %KUBE_DIR%/app-deployment.yaml\"
-                        kubectl apply -f %KUBE_DIR%/app-deployment.yaml
-
-                        kubectl get pods
-                        kubectl get services
-                    """
+                    kubectl apply -f %KUBE_DIR%/mysql-secret.yaml
+                    kubectl apply -f %KUBE_DIR%/mysql-pv.yaml
+                    kubectl apply -f %KUBE_DIR%/mysql-configmap.yaml
+                    kubectl apply -f %KUBE_DIR%/mysql-deployment.yaml
+                    
+                    
+                    powershell \"(Get-Content %KUBE_DIR%/app-deployment.yaml) -replace '\\`${BUILD_ID}', '%BUILD_ID%' | Set-Content %KUBE_DIR%/app-deployment.yaml\"
+                    kubectl apply -f %KUBE_DIR%/app-deployment.yaml
+                    
+                    kubectl get pods
+                    kubectl get services
+                """
             }
-}
+        }
     }
 
     post {
