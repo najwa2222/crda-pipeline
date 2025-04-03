@@ -2,9 +2,10 @@ pipeline {
     agent any
 
     environment {
+        DOCKER_IMAGE = 'najwa22/crda-app'
+        KUBE_DIR = 'kubernetes'
         KUBECONFIG = credentials('kubeconfig')
-        REPO_URL = 'https://github.com/najwa2222/crda-pipeline.git'
-        KUBE_DIR = "kubernetes"  // Windows path to Kubernetes manifests
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
     }
 
     stages {
@@ -22,24 +23,24 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build & Push Docker Image') {
             steps {
                 script {
-                    dockerImage = docker.build("najwa22/crda-app:${env.BUILD_ID}")
+                    docker.build("${DOCKER_IMAGE}:${env.BUILD_ID}")
+                    docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-credentials') {
+                        docker.image("${DOCKER_IMAGE}:${env.BUILD_ID}").push()
+                        docker.image("${DOCKER_IMAGE}:${env.BUILD_ID}").push('latest')
+                    }
                 }
             }
         }
 
-        stage('Push Docker Image') {
+        stage('Prepare K8s Manifests') {
             steps {
                 script {
-                    docker.withRegistry(
-                        'https://registry.hub.docker.com',
-                        'dockerhub-credentials'  // Use credentials ID directly
-                    ) {
-                        dockerImage.push()
-                        dockerImage.push('latest')
-                    }
+                    def deployment = readFile("${KUBE_DIR}/app-deployment.yaml")
+                    deployment = deployment.replace('${BUILD_ID}', env.BUILD_ID)
+                    writeFile(file: "${KUBE_DIR}/app-deployment-${env.BUILD_ID}.yaml", text: deployment)
                 }
             }
         }
@@ -47,28 +48,35 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 bat """
-                    kubectl apply -f %KUBE_DIR%/mysql-secret.yaml
-                    kubectl apply -f %KUBE_DIR%/mysql-pv.yaml
-                    kubectl apply -f %KUBE_DIR%/mysql-configmap.yaml
-                    kubectl apply -f %KUBE_DIR%/mysql-deployment.yaml
+                    kubectl apply -f ${KUBE_DIR}/mysql-secret.yaml
+                    kubectl apply -f ${KUBE_DIR}/mysql-pv.yaml
+                    kubectl apply -f ${KUBE_DIR}/mysql-configmap.yaml
+                    kubectl apply -f ${KUBE_DIR}/mysql-deployment.yaml
+                    kubectl apply -f ${KUBE_DIR}/app-deployment-${env.BUILD_ID}.yaml
                     
-                    
-                    powershell \"(Get-Content kubernetes/app-deployment.yaml) -replace '\\`${BUILD_ID}', '${env.BUILD_ID}' | Set-Content kubernetes/app-deployment.yaml\"
-                    
-                    kubectl apply -f kubernetes/app-deployment.yaml
-                    kubectl get pods
-                    kubectl get services
+                    timeout /t 30 /nobreak
+                    kubectl rollout status deployment/mysql-deployment --timeout=60s
+                    kubectl rollout status deployment/app-deployment --timeout=120s
                 """
             }
         }
     }
 
     post {
+        always {
+            bat "del /Q ${KUBE_DIR}\\app-deployment-*.yaml 2> nul"
+            echo "Cleanup complete"
+        }
         success {
-            echo 'Deployment successful!'
+            bat """
+            echo 'Verifying secrets...'
+            kubectl get secret mysql-secret -o jsonpath='{.data.password}' | base64 -d
+            kubectl get svc crda-service"
+            """
         }
         failure {
-            echo 'Deployment failed!'
+            bat "kubectl describe pod -l app=crda-app"
+            bat "kubectl logs -l app=crda-app --all-containers"
         }
     }
 }
