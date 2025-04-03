@@ -7,16 +7,14 @@ spec:
     storage: 1Gi
   accessModes:
     - ReadWriteOnce
+  storageClassName: manual
   hostPath:
-    path: /mnt/data
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: mysql-pv-claim
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
+    path: "/mnt/data"
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - minikube  # Update this if using different cluster
