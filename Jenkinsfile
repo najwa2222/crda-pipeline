@@ -4,7 +4,7 @@ pipeline {
     environment {
         DOCKER_IMAGE = 'najwa22/crda-app'
         KUBE_DIR = 'kubernetes'
-        DOCKER_HOST = 'tcp://localhost:2375' // Docker Desktop exposed port
+        DOCKER_HOST = 'tcp://localhost:2375'
     }
 
     stages {
@@ -20,10 +20,14 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                bat """
-                    docker build -t ${DOCKER_IMAGE}:%BUILD_NUMBER% .
-                    docker tag ${DOCKER_IMAGE}:%BUILD_NUMBER% ${DOCKER_IMAGE}:latest
-                """
+                script {
+                    // Use PowerShell for better error handling
+                    powershell """
+                        $ErrorActionPreference = 'Stop'
+                        docker build -t ${env.DOCKER_IMAGE}:${env.BUILD_NUMBER} .
+                        docker tag ${env.DOCKER_IMAGE}:${env.BUILD_NUMBER} ${env.DOCKER_IMAGE}:latest
+                    """
+                }
             }
         }
 
