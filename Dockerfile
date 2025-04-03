@@ -1,12 +1,23 @@
-FROM node:14.20.1
+FROM node:18.20.1
 
-WORKDIR C:\\app
+WORKDIR /app
+
+# Install system build dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install global npm packages for native modules
+RUN npm install -g node-gyp node-pre-gyp
+
 COPY package*.json ./
-RUN npm install --production
 
-COPY views/ ./views/
-COPY public/ ./public/
-COPY app.js .
+RUN npm install
 
-EXPOSE 4200
+COPY . .
+
+EXPOSE 3000
+
 CMD ["node", "app.js"]
