@@ -20,7 +20,7 @@ spec:
         command: ['sh', '-c', 'until nc -z mysql 3306; do echo "Waiting for MySQL"; sleep 5; done']
       containers:
       - name: crda-app
-        image: najwa22/crda-app:${BUILD_ID}
+        image: najwa22/crda-app
         imagePullPolicy: Always
         ports:
         - containerPort: 4200

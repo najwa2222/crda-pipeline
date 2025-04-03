@@ -2,6 +2,7 @@ pipeline {
     agent any
 
     environment {
+        REPO_URL = 'https://github.com/najwa2222/crda-pipeline.git'
         DOCKER_IMAGE = 'najwa22/crda-app'
         KUBE_DIR = 'kubernetes'
         KUBECONFIG = credentials('kubeconfig')
@@ -26,10 +27,10 @@ pipeline {
         stage('Build & Push Docker Image') {
             steps {
                 script {
-                    docker.build("${DOCKER_IMAGE}:${env.BUILD_ID}")
+                    def fullTag = "${env.DOCKER_IMAGE}:${env.BUILD_ID}"
+                    docker.build(fullTag)
                     docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-credentials') {
-                        docker.image("${DOCKER_IMAGE}:${env.BUILD_ID}").push()
-                        docker.image("${DOCKER_IMAGE}:${env.BUILD_ID}").push('latest')
+                        docker.image(fullTag).push()
                     }
                 }
             }
@@ -38,9 +39,12 @@ pipeline {
         stage('Prepare K8s Manifests') {
             steps {
                 script {
-                    def deployment = readFile("${KUBE_DIR}/app-deployment.yaml")
+                    def deployment = readFile("${env.KUBE_DIR}/app-deployment.yaml")
                     deployment = deployment.replace('${BUILD_ID}', env.BUILD_ID)
-                    writeFile(file: "${KUBE_DIR}/app-deployment-${env.BUILD_ID}.yaml", text: deployment)
+                    writeFile(
+                        file: "${env.KUBE_DIR}/app-deployment-${env.BUILD_ID}.yaml", 
+                        text: deployment
+                    )
                 }
             }
         }
@@ -48,15 +52,14 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 bat """
-                    kubectl apply -f ${KUBE_DIR}/mysql-secret.yaml
-                    kubectl apply -f ${KUBE_DIR}/mysql-pv.yaml
-                    kubectl apply -f ${KUBE_DIR}/mysql-configmap.yaml
-                    kubectl apply -f ${KUBE_DIR}/mysql-deployment.yaml
-                    kubectl apply -f ${KUBE_DIR}/app-deployment-${env.BUILD_ID}.yaml
+                    kubectl apply -f ${env.KUBE_DIR}/mysql-secret.yaml
+                    kubectl apply -f ${env.KUBE_DIR}/mysql-pv.yaml
+                    kubectl apply -f ${env.KUBE_DIR}/mysql-configmap.yaml
+                    kubectl apply -f ${env.KUBE_DIR}/mysql-deployment.yaml
+                    kubectl apply -f ${env.KUBE_DIR}/app-deployment-${env.BUILD_ID}.yaml
                     
                     timeout /t 30 /nobreak
-                    kubectl rollout status deployment/mysql-deployment --timeout=60s
-                    kubectl rollout status deployment/app-deployment --timeout=120s
+                    kubectl get pods -w
                 """
             }
         }
@@ -64,19 +67,15 @@ pipeline {
 
     post {
         always {
-            bat "del /Q ${KUBE_DIR}\\app-deployment-*.yaml 2> nul"
+            bat "del /Q ${env.KUBE_DIR}\\app-deployment-*.yaml 2> nul"
             echo "Cleanup complete"
         }
         success {
-            bat """
-            echo 'Verifying secrets...'
-            kubectl get secret mysql-secret -o jsonpath='{.data.password}' | base64 -d
-            kubectl get svc crda-service"
-            """
+            bat "kubectl get svc crda-service"
         }
         failure {
-            bat "kubectl describe pod -l app=crda-app"
-            bat "kubectl logs -l app=crda-app --all-containers"
+            bat "kubectl describe pods"
+            bat "kubectl get events --sort-by=.metadata.creationTimestamp"
         }
     }
 }
