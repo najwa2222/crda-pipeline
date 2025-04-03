@@ -53,9 +53,9 @@ pipeline {
                     kubectl apply -f %KUBE_DIR%/mysql-deployment.yaml
                     
                     
-                    powershell \"(Get-Content %KUBE_DIR%/app-deployment.yaml) -replace '\\`${BUILD_ID}', '%BUILD_ID%' | Set-Content %KUBE_DIR%/app-deployment.yaml\"
-                    kubectl apply -f %KUBE_DIR%/app-deployment.yaml
+                    powershell \"(Get-Content kubernetes/app-deployment.yaml) -replace '\\`${BUILD_ID}', '${env.BUILD_ID}' | Set-Content kubernetes/app-deployment.yaml\"
                     
+                    kubectl apply -f kubernetes/app-deployment.yaml
                     kubectl get pods
                     kubectl get services
                 """

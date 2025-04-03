@@ -13,14 +13,14 @@ spec:
         app: crda-app
     spec:
       imagePullSecrets:
-      - name: dockerhub-credentials  # <- ADD THIS
+      - name: dockerhub-credentials
       initContainers:
       - name: wait-for-mysql
         image: busybox:1.28
         command: ['sh', '-c', 'until nc -z mysql 3306; do echo "Waiting for MySQL"; sleep 2; done']
       containers:
       - name: crda-app
-        image: registry.hub.docker.com/najwa22/crda-app:${BUILD_ID}  # <- FIXED PATH
+        image: najwa22/crda-app:${BUILD_ID}
         imagePullPolicy: Always
         env:
         - name: MYSQL_HOST
