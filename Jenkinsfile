@@ -2,44 +2,47 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = 'najwa22/crda-app'
-        KUBE_DIR = 'kubernetes'
-        DOCKER_HOST = 'tcp://localhost:2375'
+        DOCKER_IMAGE = "najwa22/crda-app"
+        KUBECONFIG = credentials('kubeconfig')
     }
 
     stages {
         stage('Checkout') {
             steps {
-                checkout([$class: 'GitSCM', 
-                  branches: [[name: '*/main']],
-                  extensions: [], 
-                  userRemoteConfigs: [[url: 'https://github.com/najwa2222/crda-pipeline.git']]
-                ])
+                checkout scm
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build & Push Docker Image') {
             steps {
                 script {
-                    // Use PowerShell for better error handling
-                    powershell """
-                        $ErrorActionPreference = 'Stop'
-                        docker build -t ${env.DOCKER_IMAGE}:${env.BUILD_NUMBER} .
-                        docker tag ${env.DOCKER_IMAGE}:${env.BUILD_NUMBER} ${env.DOCKER_IMAGE}:latest
-                    """
+                    docker.build("${DOCKER_IMAGE}:${env.BUILD_ID}")
+                    
+                    withCredentials([usernamePassword(
+                        credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )]) {
+                        sh """
+                            docker login -u $DOCKER_USER -p $DOCKER_PASS
+                            docker push ${DOCKER_IMAGE}:${env.BUILD_ID}
+                        """
+                    }
                 }
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                bat """
-                    kubectl config use-context docker-desktop
-                    kubectl apply -f ${KUBE_DIR}/mysql-secret.yaml
-                    kubectl apply -f ${KUBE_DIR}/mysql-pv.yaml
-                    kubectl apply -f ${KUBE_DIR}/mysql-configmap.yaml
-                    kubectl apply -f ${KUBE_DIR}/mysql-deployment.yaml
-                    kubectl set image deployment/app-deployment crda-app=${DOCKER_IMAGE}:%BUILD_NUMBER%
+                sh """
+                    kubectl apply -f kubernetes/mysql-secret.yaml
+                    kubectl apply -f kubernetes/mysql-pv.yaml
+                    kubectl apply -f kubernetes/mysql-configmap.yaml
+                    kubectl apply -f kubernetes/mysql-deployment.yaml
+                    
+                    # Update deployment with current build ID
+                    sed -i 's|BUILD_ID|${env.BUILD_ID}|g' kubernetes/app-deployment.yaml
+                    kubectl apply -f kubernetes/app-deployment.yaml
                 """
             }
         }
@@ -47,7 +50,13 @@ pipeline {
 
     post {
         always {
-            bat "docker rmi ${DOCKER_IMAGE}:%BUILD_NUMBER%"
+            sh "docker rmi ${DOCKER_IMAGE}:${env.BUILD_ID} || true"
+        }
+        failure {
+            sh """
+                kubectl describe pods
+                kubectl logs --selector app=crda-app --all-containers
+            """
         }
     }
 }

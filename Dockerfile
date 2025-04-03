@@ -1,14 +1,10 @@
-FROM node:14
+FROM node:14-alpine
 
-WORKDIR /usr/src/app
-
+WORKDIR /app
 COPY package*.json ./
 RUN npm install
 
-# Copy all files with proper directory structure
-COPY views/ ./views/
-COPY public/ ./public/
-COPY app.js ./
+COPY . .
 
 EXPOSE 4200
-CMD ["node", "app.js", "--host", "0.0.0.0"]
+CMD ["node", "app.js"]
