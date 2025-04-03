@@ -6,36 +6,13 @@ spec:
   selector:
     matchLabels:
       app: crda-app
-  replicas: 2
   template:
     metadata:
       labels:
         app: crda-app
     spec:
-      imagePullSecrets:
-      - name: dockerhub-credentials
-      initContainers:
-      - name: wait-for-mysql
-        image: busybox:1.28
-        command: ['sh', '-c', 'until nc -z mysql 3306; do echo "Waiting for MySQL"; sleep 2; done']
       containers:
       - name: crda-app
         image: najwa22/crda-app:latest
         ports:
         - containerPort: 4200
-        envFrom:
-        - secretRef:
-            name: mysql-secret
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: crda-service
-spec:
-  type: LoadBalancer
-  selector:
-    app: crda-app
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 4200

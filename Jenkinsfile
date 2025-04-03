@@ -3,65 +3,39 @@ pipeline {
 
     environment {
         DOCKER_IMAGE = 'najwa22/crda-app'
-        DOCKER_TAG = "${env.BUILD_ID}"
         KUBE_DIR = 'kubernetes'
-        KUBECONFIG = credentials('kubeconfig')
+        DOCKER_HOST = 'tcp://localhost:2375' // Docker Desktop exposed port
     }
 
     stages {
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
-                checkout scm
+                checkout([$class: 'GitSCM', 
+                  branches: [[name: '*/main']],
+                  extensions: [], 
+                  userRemoteConfigs: [[url: 'https://github.com/najwa2222/crda-pipeline.git']]
+                ])
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    bat """
-                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
-                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
-                    """
-                }
-            }
-        }
-
-        stage('Push to Docker Hub') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-credentials',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    bat """
-                        docker login -u %DOCKER_USER% -p %DOCKER_PASS%
-                        docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
-                        docker push ${DOCKER_IMAGE}:latest
-                    """
-                }
+                bat """
+                    docker build -t ${DOCKER_IMAGE}:%BUILD_NUMBER% .
+                    docker tag ${DOCKER_IMAGE}:%BUILD_NUMBER% ${DOCKER_IMAGE}:latest
+                """
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
                 bat """
+                    kubectl config use-context docker-desktop
                     kubectl apply -f ${KUBE_DIR}/mysql-secret.yaml
-                    kubectl delete pvc mysql-pv-claim --ignore-not-found
-                    kubectl delete pv mysql-pv-volume --ignore-not-found
                     kubectl apply -f ${KUBE_DIR}/mysql-pv.yaml
                     kubectl apply -f ${KUBE_DIR}/mysql-configmap.yaml
                     kubectl apply -f ${KUBE_DIR}/mysql-deployment.yaml
-                    kubectl apply -f ${KUBE_DIR}/app-deployment.yaml
-                """
-            }
-        }
-
-        stage('Verify Deployment') {
-            steps {
-                bat """
-                    kubectl get pods
-                    kubectl get services
-                    kubectl rollout status deployment/app-deployment --timeout=120s
+                    kubectl set image deployment/app-deployment crda-app=${DOCKER_IMAGE}:%BUILD_NUMBER%
                 """
             }
         }
@@ -69,13 +43,7 @@ pipeline {
 
     post {
         always {
-            bat """
-                docker rmi ${DOCKER_IMAGE}:${DOCKER_TAG} || true
-                echo "Cleanup completed"
-            """
-        }
-        failure {
-            bat "kubectl describe pods"
+            bat "docker rmi ${DOCKER_IMAGE}:%BUILD_NUMBER%"
         }
     }
 }
