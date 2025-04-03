@@ -18,7 +18,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: mysql  # Added selector to match template labels
+      app: mysql  
   replicas: 1
   template:
     metadata:
