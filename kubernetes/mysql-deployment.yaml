@@ -10,13 +10,6 @@ spec:
       port: 3306
       targetPort: 3306
   clusterIP: None
-  resources:
-    requests:
-      memory: "256Mi"
-      cpu: "100m"
-    limits:
-      memory: "512Mi"
-      cpu: "500m"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -63,10 +56,3 @@ spec:
       - name: mysql-persistent-storage
         persistentVolumeClaim:
           claimName: mysql-pv-claim
-      resources:
-      requests:
-        memory: "256Mi"
-        cpu: "100m"
-      limits:
-        memory: "512Mi"
-        cpu: "500m"
