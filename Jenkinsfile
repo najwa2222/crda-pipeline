@@ -47,6 +47,7 @@ pipeline {
                 bat '''
                     kubectl apply -f %KUBE_DIR%/mysql-secret.yaml
                     kubectl apply -f %KUBE_DIR%/mysql-pv.yaml
+                    kubectl apply -f %KUBE_DIR%/mysql-configmap.yaml
                     kubectl apply -f %KUBE_DIR%/mysql-deployment.yaml
                     kubectl apply -f %KUBE_DIR%/app-deployment.yaml
                     
