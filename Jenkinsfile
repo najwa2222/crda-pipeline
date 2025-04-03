@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DOCKER_IMAGE = "najwa22/crda-app"
-        KUBECONFIG = credentials('kubeconfig')
+        KUBE_DIR = ".\\kubernetes"
     }
 
     stages {
@@ -13,36 +13,41 @@ pipeline {
             }
         }
 
-        stage('Build & Push Docker Image') {
+        stage('Build Docker Image') {
             steps {
-                script {
-                    docker.build("${DOCKER_IMAGE}:${env.BUILD_ID}")
-                    
-                    withCredentials([usernamePassword(
-                        credentialsId: 'dockerhub-creds',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )]) {
-                        sh """
-                            docker login -u $DOCKER_USER -p $DOCKER_PASS
-                            docker push ${DOCKER_IMAGE}:${env.BUILD_ID}
-                        """
-                    }
+                bat """
+                    docker build -t %DOCKER_IMAGE%:%BUILD_ID% .
+                    docker tag %DOCKER_IMAGE%:%BUILD_ID% %DOCKER_IMAGE%:latest
+                """
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    bat """
+                        docker login -u %DOCKER_USER% -p %DOCKER_PASS%
+                        docker push %DOCKER_IMAGE%:%BUILD_ID%
+                        docker push %DOCKER_IMAGE%:latest
+                    """
                 }
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh """
-                    kubectl apply -f kubernetes/mysql-secret.yaml
-                    kubectl apply -f kubernetes/mysql-pv.yaml
-                    kubectl apply -f kubernetes/mysql-configmap.yaml
-                    kubectl apply -f kubernetes/mysql-deployment.yaml
+                bat """
+                    kubectl apply -f %KUBE_DIR%\\mysql-secret.yaml
+                    kubectl apply -f %KUBE_DIR%\\mysql-pv.yaml
+                    kubectl apply -f %KUBE_DIR%\\mysql-configmap.yaml
+                    kubectl apply -f %KUBE_DIR%\\mysql-deployment.yaml
                     
-                    # Update deployment with current build ID
-                    sed -i 's|BUILD_ID|${env.BUILD_ID}|g' kubernetes/app-deployment.yaml
-                    kubectl apply -f kubernetes/app-deployment.yaml
+                    powershell "(Get-Content %KUBE_DIR%\\app-deployment.yaml) -replace 'IMAGE_TAG', '%BUILD_ID%' | Set-Content %KUBE_DIR%\\app-deployment.yaml"
+                    kubectl apply -f %KUBE_DIR%\\app-deployment.yaml
                 """
             }
         }
@@ -50,13 +55,10 @@ pipeline {
 
     post {
         always {
-            sh "docker rmi ${DOCKER_IMAGE}:${env.BUILD_ID} || true"
+            bat "docker rmi %DOCKER_IMAGE%:%BUILD_ID% || echo No image to delete"
         }
         failure {
-            sh """
-                kubectl describe pods
-                kubectl logs --selector app=crda-app --all-containers
-            """
+            bat "kubectl get pods && kubectl describe pods"
         }
     }
 }

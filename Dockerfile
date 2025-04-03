@@ -1,10 +1,12 @@
-FROM node:14-alpine
+FROM node:14.20.1
 
-WORKDIR /app
+WORKDIR C:\\app
 COPY package*.json ./
-RUN npm install
+RUN npm install --production
 
-COPY . .
+COPY views/ ./views/
+COPY public/ ./public/
+COPY app.js .
 
 EXPOSE 4200
 CMD ["node", "app.js"]

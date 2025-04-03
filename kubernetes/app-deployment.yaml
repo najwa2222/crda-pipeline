@@ -12,13 +12,13 @@ spec:
         app: crda-app
     spec:
       containers:
-      - name: app
-        image: najwa22/crda-app:BUILD_ID
+      - name: crda-app
+        image: najwa22/crda-app:IMAGE_TAG  # Will be replaced by Jenkins
         ports:
         - containerPort: 4200
         env:
         - name: MYSQL_HOST
-          value: "mysql"
+          value: "mysql-service"
 ---
 apiVersion: v1
 kind: Service
@@ -26,9 +26,8 @@ metadata:
   name: crda-service
 spec:
   type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 4200
   selector:
     app: crda-app
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 4200
