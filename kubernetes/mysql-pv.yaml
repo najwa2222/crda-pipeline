@@ -10,8 +10,10 @@ spec:
     storage: 2Gi
   accessModes:
     - ReadWriteOnce
+  # Replace hostPath in PV with:
   hostPath:
-    path: "/mnt/data"
+    path: "C:\\k8s-data"  # Windows path
+    type: DirectoryOrCreate  # Auto-create if missing
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

@@ -10,6 +10,13 @@ spec:
       port: 3306
       targetPort: 3306
   clusterIP: None
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -28,6 +35,14 @@ spec:
       containers:
       - name: mysql
         image: mysql:5.7
+        readinessProbe:
+          exec:
+            command: ["mysqladmin", "ping", "-h", "localhost"]
+          initialDelaySeconds: 20
+        livenessProbe:
+          exec:
+            command: ["mysqladmin", "ping", "-h", "localhost"]
+          initialDelaySeconds: 30
         env:
         - name: MYSQL_ROOT_PASSWORD
           valueFrom:
@@ -48,3 +63,10 @@ spec:
       - name: mysql-persistent-storage
         persistentVolumeClaim:
           claimName: mysql-pv-claim
+      resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"

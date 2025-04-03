@@ -962,6 +962,7 @@ app.use((err, req, res, next) => {
 
 // Start the server
 const PORT = process.env.PORT || 4200;
-app.listen(PORT, () => {
-  console.log(`Server started on port ${PORT}`);
+// Replace app.listen line with:
+app.listen(4200, '0.0.0.0', () => {
+  console.log('Server running on port 4200');
 });

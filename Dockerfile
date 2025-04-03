@@ -11,4 +11,4 @@ COPY public/ ./public/
 COPY app.js ./
 
 EXPOSE 4200
-CMD ["node", "app.js"]
+CMD ["node", "app.js", "--host", "0.0.0.0"]

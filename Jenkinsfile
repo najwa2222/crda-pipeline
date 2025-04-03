@@ -36,7 +36,7 @@ pipeline {
                 script {
                     docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-credentials') {
                         dockerImage.push()
-                        dockerImage.push('latest')
+                        dockerImage.push(${env.BUILD_ID})
                     }
                 }
             }
@@ -44,18 +44,21 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                bat '''
-                    kubectl apply -f %KUBE_DIR%/mysql-secret.yaml
-                    kubectl apply -f %KUBE_DIR%/mysql-pv.yaml
-                    kubectl apply -f %KUBE_DIR%/mysql-configmap.yaml
-                    kubectl apply -f %KUBE_DIR%/mysql-deployment.yaml
-                    kubectl apply -f %KUBE_DIR%/app-deployment.yaml
+                bat """
+                    kubectl apply -f ${env.KUBE_DIR}/mysql-secret.yaml
+                    kubectl apply -f ${env.KUBE_DIR}/mysql-pv.yaml
+                    kubectl apply -f ${env.KUBE_DIR}/mysql-configmap.yaml
+                    kubectl apply -f ${env.KUBE_DIR}/mysql-deployment.yaml
+                    
+                    # Update app deployment with the new image tag
+                    powershell "(Get-Content ${env.KUBE_DIR}/app-deployment.yaml) -replace 'najwa22/crda-app:latest', 'najwa22/crda-app:${env.BUILD_ID}' | Set-Content ${env.KUBE_DIR}/app-deployment.yaml"
+                    kubectl apply -f ${env.KUBE_DIR}/app-deployment.yaml
                     
                     kubectl get pods
                     kubectl get services
-                '''
+                """
             }
-        }
+}
     }
 
     post {

@@ -5,19 +5,24 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: crda-app  # Added selector to match template labels
+      app: crda-app
   replicas: 1
   template:
     metadata:
       labels:
         app: crda-app
     spec:
+      initContainers:
+      - name: wait-for-mysql
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nc -z mysql 3306; do echo "Waiting for MySQL"; sleep 2; done']
       containers:
       - name: crda-app
-        image: najwa22/crda-app:latest
+        image: najwa22/crda-app:${BUILD_ID}
+        imagePullPolicy: Always
         env:
         - name: MYSQL_HOST
-          value: mysql  # Should match the Service name "mysql"
+          value: mysql
         - name: MYSQL_USER
           value: root
         - name: MYSQL_PASSWORD
@@ -29,6 +34,27 @@ spec:
           value: base_crda
         - name: MYSQL_PORT
           value: "3306"
+        ports:
+        - containerPort: 4200
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 4200
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 4200
+          initialDelaySeconds: 15
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
 ---
 apiVersion: v1
 kind: Service
