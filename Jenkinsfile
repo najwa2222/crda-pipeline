@@ -2,49 +2,42 @@ pipeline {
     agent any
 
     environment {
-        REPO_URL = 'https://github.com/najwa2222/crda-pipeline.git'
         DOCKER_IMAGE = 'najwa22/crda-app'
+        DOCKER_TAG = "${env.BUILD_ID}"
         KUBE_DIR = 'kubernetes'
         KUBECONFIG = credentials('kubeconfig')
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
     }
 
     stages {
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: '*/main']],
-                    extensions: [],
-                    userRemoteConfigs: [[
-                        url: env.REPO_URL,
-                        credentialsId: 'github-creds'
-                    ]]
-                ])
+                checkout scm
             }
         }
 
-        stage('Build & Push Docker Image') {
+        stage('Build Docker Image') {
             steps {
                 script {
-                    def fullTag = "${env.DOCKER_IMAGE}:${env.BUILD_ID}"
-                    docker.build(fullTag)
-                    docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-credentials') {
-                        docker.image(fullTag).push()
-                    }
+                    bat """
+                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
+                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
+                    """
                 }
             }
         }
 
-        stage('Prepare K8s Manifests') {
+        stage('Push to Docker Hub') {
             steps {
-                script {
-                    def deployment = readFile("${env.KUBE_DIR}/app-deployment.yaml")
-                    deployment = deployment.replace('${BUILD_ID}', env.BUILD_ID)
-                    writeFile(
-                        file: "${env.KUBE_DIR}/app-deployment-${env.BUILD_ID}.yaml", 
-                        text: deployment
-                    )
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-credentials',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    bat """
+                        docker login -u %DOCKER_USER% -p %DOCKER_PASS%
+                        docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
+                        docker push ${DOCKER_IMAGE}:latest
+                    """
                 }
             }
         }
@@ -52,14 +45,23 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 bat """
-                    kubectl apply -f ${env.KUBE_DIR}/mysql-secret.yaml
-                    kubectl apply -f ${env.KUBE_DIR}/mysql-pv.yaml
-                    kubectl apply -f ${env.KUBE_DIR}/mysql-configmap.yaml
-                    kubectl apply -f ${env.KUBE_DIR}/mysql-deployment.yaml
-                    kubectl apply -f ${env.KUBE_DIR}/app-deployment-${env.BUILD_ID}.yaml
-                    
-                    timeout /t 30 /nobreak
-                    kubectl get pods -w
+                    kubectl apply -f ${KUBE_DIR}/mysql-secret.yaml
+                    kubectl delete pvc mysql-pv-claim --ignore-not-found
+                    kubectl delete pv mysql-pv-volume --ignore-not-found
+                    kubectl apply -f ${KUBE_DIR}/mysql-pv.yaml
+                    kubectl apply -f ${KUBE_DIR}/mysql-configmap.yaml
+                    kubectl apply -f ${KUBE_DIR}/mysql-deployment.yaml
+                    kubectl apply -f ${KUBE_DIR}/app-deployment.yaml
+                """
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                bat """
+                    kubectl get pods
+                    kubectl get services
+                    kubectl rollout status deployment/app-deployment --timeout=120s
                 """
             }
         }
@@ -67,15 +69,13 @@ pipeline {
 
     post {
         always {
-            bat "del /Q ${env.KUBE_DIR}\\app-deployment-*.yaml 2> nul"
-            echo "Cleanup complete"
-        }
-        success {
-            bat "kubectl get svc crda-service"
+            bat """
+                docker rmi ${DOCKER_IMAGE}:${DOCKER_TAG} || true
+                echo "Cleanup completed"
+            """
         }
         failure {
             bat "kubectl describe pods"
-            bat "kubectl get events --sort-by=.metadata.creationTimestamp"
         }
     }
 }

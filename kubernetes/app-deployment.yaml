@@ -17,31 +17,15 @@ spec:
       initContainers:
       - name: wait-for-mysql
         image: busybox:1.28
-        command: ['sh', '-c', 'until nc -z mysql 3306; do echo "Waiting for MySQL"; sleep 5; done']
+        command: ['sh', '-c', 'until nc -z mysql 3306; do echo "Waiting for MySQL"; sleep 2; done']
       containers:
       - name: crda-app
-        image: najwa22/crda-app
-        imagePullPolicy: Always
+        image: najwa22/crda-app:latest
         ports:
         - containerPort: 4200
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        livenessProbe:
-          httpGet:
-            path: /
-            port: 4200
-          initialDelaySeconds: 30
-        readinessProbe:
-          httpGet:
-            path: /
-            port: 4200
-          initialDelaySeconds: 15
-
+        envFrom:
+        - secretRef:
+            name: mysql-secret
 ---
 apiVersion: v1
 kind: Service
