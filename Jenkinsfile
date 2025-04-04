@@ -5,8 +5,6 @@ pipeline {
         DOCKER_IMAGE = "najwa22/crda-app"
         DOCKER_TAG = "${env.BUILD_NUMBER}"
         KUBE_NAMESPACE = "crda-namespace"
-        MYSQL_SECRET = "mysql-secret"
-        KUBECONFIG = "C:\\Users\\your-username\\.kube\\config"  // Update with your Windows path
     }
 
     stages {
@@ -28,7 +26,7 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
+                    credentialsId: 'dockerhub-credentials',
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
