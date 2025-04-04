@@ -3,21 +3,24 @@ pipeline {
 
     environment {
         DOCKER_IMAGE = "najwa22/crda-app"
-        KUBE_DIR = ".\\kubernetes"
+        DOCKER_TAG = "${env.BUILD_NUMBER}"
+        KUBE_NAMESPACE = "crda-namespace"
+        MYSQL_SECRET = "mysql-secret"
+        KUBECONFIG = "C:\\Users\\your-username\\.kube\\config"  // Update with your Windows path
     }
 
     stages {
-        stage('Checkout') {
+        stage('Checkout SCM') {
             steps {
-                checkout scm
+                git url: 'https://github.com/najwa2222/crda-pipeline.git', branch: 'main'
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 bat """
-                    docker build --no-cache -t ${DOCKER_IMAGE}:${BUILD_ID} .
-                    docker tag ${DOCKER_IMAGE}:${BUILD_ID} ${DOCKER_IMAGE}:latest
+                    docker build -t %DOCKER_IMAGE%:%DOCKER_TAG% .
+                    docker tag %DOCKER_IMAGE%:%DOCKER_TAG% %DOCKER_IMAGE%:latest
                 """
             }
         }
@@ -31,7 +34,7 @@ pipeline {
                 )]) {
                     bat """
                         docker login -u %DOCKER_USER% -p %DOCKER_PASS%
-                        docker push %DOCKER_IMAGE%:%BUILD_ID%
+                        docker push %DOCKER_IMAGE%:%DOCKER_TAG%
                         docker push %DOCKER_IMAGE%:latest
                     """
                 }
@@ -41,25 +44,29 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 bat """
-                    kubectl apply -f ${KUBE_DIR}/mysql-pv.yaml
-                    kubectl apply -f ${KUBE_DIR}/mysql-pvc.yaml
-                    kubectl apply -f ${KUBE_DIR}/mysql-secret.yaml
-                    kubectl apply -f ${KUBE_DIR}/mysql-configmap.yaml
-                    kubectl apply -f ${KUBE_DIR}/mysql-deployment.yaml
-                    
-                    powershell "(Get-Content ${KUBE_DIR}/app-deployment.yaml) -replace 'IMAGE_TAG', '${BUILD_ID}' | Set-Content ${KUBE_DIR}/app-deployment.yaml"
-                    kubectl apply -f ${KUBE_DIR}/app-deployment.yaml
+                    kubectl create namespace %KUBE_NAMESPACE% --dry-run=client -o yaml | kubectl apply -f -
                 """
+                
+                dir('kubernetes') {
+                    bat """
+                        kubectl apply -f mysql-secret.yaml --namespace %KUBE_NAMESPACE%
+                        kubectl apply -f mysql-init-configmap.yaml --namespace %KUBE_NAMESPACE%
+                        kubectl apply -f mysql-pv.yaml --namespace %KUBE_NAMESPACE%
+                        kubectl apply -f mysql-deployment.yaml --namespace %KUBE_NAMESPACE%
+                        kubectl apply -f app-deployment.yaml --namespace %KUBE_NAMESPACE%
+                        kubectl apply -f app-service.yaml --namespace %KUBE_NAMESPACE%
+                    """
+                }
             }
         }
     }
 
     post {
         always {
-            bat "docker rmi %DOCKER_IMAGE%:%BUILD_ID% || echo No image to delete"
-        }
-        failure {
-            bat "kubectl get pods && kubectl describe pods"
+            bat """
+                docker rmi %DOCKER_IMAGE%:%DOCKER_TAG% || echo No image to delete
+                docker rmi %DOCKER_IMAGE%:latest || echo No image to delete
+            """
         }
     }
 }
