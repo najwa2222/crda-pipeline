@@ -53,6 +53,8 @@ pipeline {
                 
                 dir('kubernetes') {
                     bat """
+                        kubectl apply -f mysql-secret.yaml --namespace %KUBE_NAMESPACE%
+                        kubectl apply -f mysql-configmap.yaml --namespace %KUBE_NAMESPACE%
                         kubectl apply -f mysql-pv.yaml --namespace %KUBE_NAMESPACE%
                         timeout /t 30 /nobreak
                         kubectl apply -f mysql-deployment.yaml --namespace %KUBE_NAMESPACE%
