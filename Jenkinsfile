@@ -5,6 +5,7 @@ pipeline {
         DOCKER_IMAGE = "najwa22/crda-app"
         DOCKER_TAG = "${env.BUILD_NUMBER}"
         KUBE_NAMESPACE = "crda-namespace"
+        MYSQL_SECRET = "mysql-secret"
     }
 
     stages {
@@ -17,7 +18,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 bat """
-                    docker build -t %DOCKER_IMAGE%:%DOCKER_TAG% .
+                    docker build --no-cache -t %DOCKER_IMAGE%:%DOCKER_TAG% .
                     docker tag %DOCKER_IMAGE%:%DOCKER_TAG% %DOCKER_IMAGE%:latest
                 """
             }
@@ -26,14 +27,14 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-credentials',
+                    credentialsId: 'dockerhub-creds',
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
                     bat """
-                        docker login -u %DOCKER_USER% -p %DOCKER_PASS%
+                        echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin
                         docker push %DOCKER_IMAGE%:%DOCKER_TAG%
-                        docker push %DOCKER_IMAGE%:latest
+                        docker push %DOCKER_IMAGE%:latest || echo "Push failed but continuing"
                     """
                 }
             }
@@ -43,14 +44,19 @@ pipeline {
             steps {
                 bat """
                     kubectl create namespace %KUBE_NAMESPACE% --dry-run=client -o yaml | kubectl apply -f -
+                    
+                    kubectl create secret generic %MYSQL_SECRET% ^
+                        --namespace %KUBE_NAMESPACE% ^
+                        --from-literal=password=your_mysql_root_password ^
+                        --dry-run=client -o yaml | kubectl apply -f -
                 """
                 
                 dir('kubernetes') {
                     bat """
-                        kubectl apply -f mysql-secret.yaml --namespace %KUBE_NAMESPACE%
-                        kubectl apply -f mysql-init-configmap.yaml --namespace %KUBE_NAMESPACE%
                         kubectl apply -f mysql-pv.yaml --namespace %KUBE_NAMESPACE%
+                        timeout /t 30 /nobreak
                         kubectl apply -f mysql-deployment.yaml --namespace %KUBE_NAMESPACE%
+                        timeout /t 30 /nobreak
                         kubectl apply -f app-deployment.yaml --namespace %KUBE_NAMESPACE%
                         kubectl apply -f app-service.yaml --namespace %KUBE_NAMESPACE%
                     """
@@ -60,10 +66,17 @@ pipeline {
     }
 
     post {
-        always {
+        success {
             bat """
-                docker rmi %DOCKER_IMAGE%:%DOCKER_TAG% || echo No image to delete
-                docker rmi %DOCKER_IMAGE%:latest || echo No image to delete
+                echo "Cleaning up successful build images"
+                docker rmi %DOCKER_IMAGE%:%DOCKER_TAG%
+                docker rmi %DOCKER_IMAGE%:latest
+            """
+        }
+        failure {
+            bat """
+                echo "Preserving images for failed build debugging"
+                docker images | findstr "%DOCKER_IMAGE%"
             """
         }
     }
