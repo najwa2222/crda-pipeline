@@ -31,15 +31,15 @@ pipeline {
         }
         
         stage('Unit Tests') {
-            steps {
-                bat 'npm test -- --coverage --watchAll=false --detectOpenHandles --forceExit'
+        steps {
+            bat 'npm test -- --ci --reporters=jest-junit --coverage'
+        }
+        post {
+            always {
+            junit 'test-results/jest-junit.xml'
+            cobertura coberturaReportFile: 'coverage/lcov.info'
             }
-            post {
-                always {
-                    junit allowEmptyResults: true, testResults: 'test-results/**/*.xml'
-                    cobertura coberturaReportFile: 'coverage/cobertura-coverage.xml'
-                }
-            }
+        }
         }
         
         stage('SonarQube Analysis') {
@@ -157,7 +157,7 @@ pipeline {
             slackSend(
             color: 'good',
             message: "Successful build: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-            channel: '#deployments',
+            channel: '#jenkins-builds',
             tokenCredentialId: 'slack-token' // Create this credential in Jenkins
             )
         }
@@ -165,7 +165,7 @@ pipeline {
             slackSend(
             color: 'danger',
             message: "Failed build: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-            channel: '#deployments',
+            channel: '#jenkins-builds',
             tokenCredentialId: 'slack-token'
             )
         }

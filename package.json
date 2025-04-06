@@ -15,31 +15,6 @@
     "test:coverage": "jest --coverage --detectOpenHandles --forceExit",
     "sonar": "sonar-scanner"
   },
-  "jest": {
-    "collectCoverage": true,
-    "coverageReporters": [
-      "lcov",
-      "text",
-      "html"
-    ],
-    "reporters": [
-      "default",
-      "jest-junit"
-    ],
-    "testEnvironment": "node",
-    "testMatch": [
-      "**/test/**/*.test.js"
-    ],
-    "coverageDirectory": "coverage",
-    "coveragePathIgnorePatterns": [
-      "/node_modules/",
-      "/test/",
-      "/public/",
-      "/kubernetes/"
-    ],
-    "globalSetup": "./test/setup.js",
-    "globalTeardown": "./test/teardown.js"
-  },
   "jest-junit": {
     "outputDirectory": "test-results",
     "outputName": "junit.xml",
