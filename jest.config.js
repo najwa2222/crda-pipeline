@@ -1,5 +1,4 @@
-// jest.config.js
-module.exports = {
+export default {
   testEnvironment: 'node',
   collectCoverage: true,
   coverageReporters: ['lcov', 'text', 'html'],
