@@ -1,8 +1,14 @@
 module.exports = {
-    coverageDirectory: 'coverage',
-    collectCoverageFrom: ['**/*.js'],
-    coverageReporters: ['lcov', 'cobertura'],
-    reporters: [
-      'default',
-      ['jest-junit', { outputDirectory: 'test-results', outputName: 'test-report.xml' }]
-  };
+  collectCoverage: true,
+  coverageReporters: ['lcov', 'text', 'html'],
+  reporters: ['default', 'jest-junit'],
+  testEnvironment: 'node',
+  testMatch: ['**/test/**/*.test.js'],
+  coverageDirectory: 'coverage',
+  coveragePathIgnorePatterns: [
+    '/node_modules/',
+    '/test/',
+    '/public/',
+    '/kubernetes/'
+  ]
+};

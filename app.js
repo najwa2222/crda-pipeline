@@ -1,10 +1,9 @@
 const express = require('express');
 const { engine } = require('express-handlebars');
-const expressHbs = require('express-handlebars');
 const mysql = require('mysql');
 const cors = require('cors');
 const session = require('express-session');
-const methodOverride = require('method-override');
+import logger from './utils/logger';
 // Initialization of the Express application
 const app = express();
 
@@ -15,7 +14,7 @@ app.use(express.urlencoded({ extended: true }));
 //app.use(methodOverride('_method'));
 /*
 app.use((req, res, next) => {
-  console.log(`[${req.method}] ${req.originalUrl}`);
+  logger.info(`[${req.method}] ${req.originalUrl}`);
   next();
 });*/
 // Middleware Middleware Middleware Middleware Middleware Middleware
@@ -36,7 +35,7 @@ connection.connect((err) => {
     console.error('Error connecting to MySQL server: ' + err.stack);
     return;
   }
-  console.log('Connected to MySQL server as ID ' + connection.threadId);
+  logger.info(`Connected to MySQL server as ID ${connection.threadId}`);
 });
 // Add before other routes
 app.get('/health', (req, res) => {
@@ -55,9 +54,9 @@ app.engine('.hbs', engine({
     eq: (a, b) => a === b,
     statusClass: (status) => {
       switch(status) {
-        case 'مقبول': return 'bg-green-100 text-green-800 border-green-200';
-        case 'مرفوض': return 'bg-red-100 text-red-800 border-red-200';
-        default: return 'bg-gray-100 text-gray-800 border-gray-200';
+      case 'مقبول': return 'bg-green-100 text-green-800 border-green-200';
+      case 'مرفوض': return 'bg-red-100 text-red-800 border-red-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
       }
     }
   }
@@ -125,8 +124,8 @@ app.get('/logout', (req, res) => {
 
 app.get('/about', (req, res) => {
   res.render('about', { 
-      title: 'من نحن',
-      user: req.session.user 
+    title: 'من نحن',
+    user: req.session.user 
   });
 });
 
@@ -257,14 +256,14 @@ app.post('/login', (req, res) => {
         
         // Redirect based on role
         switch(user.role_user) {
-          case 'chef_dentreprise':
-            return res.redirect('/getservices');
-          case 'gerant':
-            return res.redirect('/getreports');
-          case 'directeur':
-            return res.redirect('/results');
-          default:
-            return res.redirect('/login?error=invalid_role');
+        case 'chef_dentreprise':
+          return res.redirect('/getservices');
+        case 'gerant':
+          return res.redirect('/getreports');
+        case 'directeur':
+          return res.redirect('/results');
+        default:
+          return res.redirect('/login?error=invalid_role');
         }
       } else {
         res.redirect('/login?error=invalid_credentials');
@@ -333,7 +332,7 @@ app.post('/addservice', (req, res) => {
       res.redirect('/services?error=database_error');
       return;
     }
-    console.log('New record added with ID: ' + result.insertId);
+    logger.info(`New record added with ID: ' ${result.insertId}`);
     res.redirect('/getservices');
 
   });
@@ -545,9 +544,9 @@ app.get('/results', isAuthenticated, isDirecteur, (req, res) => {
       helpers: {
         statusClass: (status) => {
           switch(status) {
-            case 'مقبول': return 'bg-green-100 text-green-800 border-green-200';
-            case 'مرفوض': return 'bg-red-100 text-red-800 border-red-200';
-            default: return 'bg-gray-100 text-gray-800 border-gray-200';
+          case 'مقبول': return 'bg-green-100 text-green-800 border-green-200';
+          case 'مرفوض': return 'bg-red-100 text-red-800 border-red-200';
+          default: return 'bg-gray-100 text-gray-800 border-gray-200';
           }
         }
       }
@@ -714,9 +713,25 @@ app.delete('/api/reports/:id', isAuthenticated, isGerant, (req, res) => {
   const reportId = req.params.id;
 
   connection.beginTransaction(err => {
-    if (err) return res.status(500).json({ error: err.message });
-
-    // 1. Get report details first
+    if (err) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to start transaction'
+      });
+    }
+  
+    // Define rollback function
+    const rollback = (res, err) => {
+      console.error('Error during transaction:', err);
+      connection.rollback(() => {
+        res.status(500).json({
+          success: false,
+          message: err.message || 'An error occurred during the database operation'
+        });
+      });
+    };
+  
+    // Your existing transaction code
     connection.query(
       'SELECT cin, sujet FROM rapport WHERE id = ?',
       [reportId],
@@ -726,14 +741,14 @@ app.delete('/api/reports/:id', isAuthenticated, isGerant, (req, res) => {
         if (results.length === 0) return rollback(res, new Error('Report not found'));
         
         const { cin, sujet } = results[0];
-
+  
         // 2. Delete related results
         connection.query(
           'DELETE FROM results WHERE cin = ? AND sujet = ?',
           [cin, sujet],
           (err) => {
             if (err) return rollback(res, err);
-
+  
             // 3. Delete the report
             connection.query(
               'DELETE FROM rapport WHERE id = ?',
@@ -752,6 +767,8 @@ app.delete('/api/reports/:id', isAuthenticated, isGerant, (req, res) => {
       }
     );
   });
+
+
 });
 
 // Edit report route
@@ -828,12 +845,12 @@ app.post('/updatereport/:id', isAuthenticated, isGerant, (req, res) => {
 //register //register //register //register //register //register //register //register 
 app.get('/pending_approval', (req, res) => {
   res.render('pending_approval', { 
-      title: 'قيد الانتظار'
+    title: 'قيد الانتظار'
   });
 });
 app.get('/unapproved_login', (req, res) => {
   res.render('unapproved_login', { 
-      title: 'قيد الانتظار'
+    title: 'قيد الانتظار'
   });
 });
 
@@ -888,16 +905,16 @@ app.post('/register', (req, res) => {
 //admin //admin//admin//admin//admin//admin//admin//admin//admin//admin//admin//admin//admin
 app.get('/admin/pending-accounts', isAuthenticated, isDirecteur, (req, res) => {
 // In your pending accounts route handler
-connection.query(
-  'SELECT id, email_user, nom_user, prenom_user, role_user FROM utilisateur WHERE status_user = "pending"',
-  (err, results) => {
-    if (err) return res.status(500).send('Database error');
-    res.render('admin/pending-accounts', {
-      title: 'الحسابات المعلقة',
-      accounts: results
-    });
-  }
-);
+  connection.query(
+    'SELECT id, email_user, nom_user, prenom_user, role_user FROM utilisateur WHERE status_user = "pending"',
+    (err, results) => {
+      if (err) return res.status(500).send('Database error');
+      res.render('admin/pending-accounts', {
+        title: 'الحسابات المعلقة',
+        accounts: results
+      });
+    }
+  );
 });
 
 // Approve route (PUT)
@@ -942,7 +959,7 @@ app.use((error, req, res, next) => {
 });
 // See Incoming requests
 /*app.use((req, res, next) => {
-  console.log(`Incoming ${req.method} request for: ${req.originalUrl}`);
+  logger.info(`Incoming ${req.method} request for: ${req.originalUrl}`);
   next();
 });*/
 // 404 error handler
@@ -968,6 +985,6 @@ module.exports = app;
 if (process.env.NODE_ENV !== 'test') {
   const PORT = process.env.PORT || 4200;
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
+    logger.info(`Server running on port ${PORT}`);
   });
 }

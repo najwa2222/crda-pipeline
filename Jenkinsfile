@@ -154,16 +154,20 @@ pipeline {
             junit allowEmptyResults: true, testResults: 'test-results/**/*.xml'
         }
         success {
-            echo 'Deployment completed successfully!'
-            slackSend color: 'good', 
-                     message: "Successful build: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                     channel: '#deployments'
+            slackSend(
+            color: 'good',
+            message: "Successful build: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            channel: '#deployments',
+            tokenCredentialId: 'slack-token' // Create this credential in Jenkins
+            )
         }
         failure {
-            echo 'Deployment failed!'
-            slackSend color: 'danger', 
-                     message: "Failed build: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                     channel: '#deployments'
+            slackSend(
+            color: 'danger',
+            message: "Failed build: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            channel: '#deployments',
+            tokenCredentialId: 'slack-token'
+            )
         }
     }
 }

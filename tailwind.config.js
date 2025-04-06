@@ -1,7 +1,7 @@
 module.exports = {
   content: [
-    "./views/**/*.hbs",
-    "./public/**/*.js"
+    './views/**/*.hbs',
+    './public/**/*.js'
   ],
   theme: {
     extend: {
@@ -11,4 +11,4 @@ module.exports = {
     },
   },
   plugins: [],
-}
+};
