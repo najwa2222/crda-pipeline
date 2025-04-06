@@ -1,8 +1,7 @@
 module.exports = {
   env: {
     node: true,
-    es2022: true,
-    jest: true
+    es2022: true
   },
   extends: ['eslint:recommended'],
   parserOptions: {
@@ -12,8 +11,8 @@ module.exports = {
   rules: {
     'no-console': 'warn',
     'no-unused-vars': 'warn',
-    'consistent-return': 'error',
-    'arrow-body-style': ['error', 'as-needed'],
-    'prefer-const': 'error'
+    'indent': ['error', 2],
+    'quotes': ['error', 'single'],
+    'semi': ['error', 'always']
   }
 };
