@@ -1,23 +1,27 @@
-FROM node:18.20.1
+FROM node:18.20.3-alpine
 
-# Install system build dependencies
-RUN apt-get update && \
-    apt-get install -y python3 make g++ && \
-    rm -rf /var/lib/apt/lists/*
+# Install system dependencies
+RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
-# Install global dependencies first
-RUN npm install -g node-gyp node-pre-gyp
-
-# Copy package files
+# Copy package files first for better layer caching
 COPY package*.json ./
 
-# Install project dependencies
-RUN npm install
+# Install production dependencies first
+RUN npm ci --only=production
+
+# Install development dependencies separately
+RUN npm ci --only=development
 
 # Copy application files
 COPY . .
 
-EXPOSE 3000
+# Build application (if needed)
+RUN npm run build
+
+# Cleanup development dependencies for production image
+RUN npm prune --production
+
+EXPOSE 4200
 CMD ["node", "app.js"]

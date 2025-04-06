@@ -2,19 +2,27 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mysql-deployment
+  namespace: crda-namespace
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: mysql
+      tier: database
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
         app: mysql
+        tier: database
     spec:
+      securityContext:
+        runAsUser: 999
+        fsGroup: 999
       containers:
       - name: mysql
-        image: mysql:5.7
+        image: mysql:8.0
         ports:
         - containerPort: 3306
         env:
@@ -23,15 +31,27 @@ spec:
             secretKeyRef:
               name: mysql-secret
               key: password
+        - name: MYSQL_DATABASE
+          value: "base_crda"
+        - name: APP_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: app-password
         volumeMounts:
         - name: mysql-persistent-storage
           mountPath: /var/lib/mysql
         - name: init-script
           mountPath: /docker-entrypoint-initdb.d
+        livenessProbe:
+          exec:
+            command: ["mysqladmin", "ping", "-uroot", "-p$(MYSQL_ROOT_PASSWORD)"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
       volumes:
       - name: mysql-persistent-storage
         persistentVolumeClaim:
-          claimName: mysql-pv-claim
+          claimName: mysql-pvc
       - name: init-script
         configMap:
           name: mysql-init-script

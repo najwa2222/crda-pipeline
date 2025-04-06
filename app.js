@@ -21,13 +21,13 @@ app.use((req, res, next) => {
 // Middleware Middleware Middleware Middleware Middleware Middleware
 
 // New configuration
-// Replace existing connection with:
+// In your app.js
 const connection = mysql.createConnection({
-  host: process.env.MYSQL_HOST || 'mysql',
-  user: process.env.MYSQL_USER || 'root',
-  password: process.env.MYSQL_PASSWORD || '',
-  database: process.env.MYSQL_DATABASE || 'base_crda',
-  port: process.env.MYSQL_PORT || 3306
+  host: process.env.MYSQL_HOST,
+  user: process.env.MYSQL_USER,
+  password: process.env.MYSQL_PASSWORD, // This should use app-user password
+  database: process.env.MYSQL_DATABASE,
+  port: process.env.MYSQL_PORT
 });
 
 // Establish a connection to the database
@@ -960,9 +960,14 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start the server
-const PORT = process.env.PORT || 4200;
-// Replace app.listen line with:
-app.listen(4200, '0.0.0.0', () => {
-  console.log('Server running on port 4200');
-});
+
+// Export the app for testing
+module.exports = app;
+
+// Only start server if not in test environment
+if (process.env.NODE_ENV !== 'test') {
+  const PORT = process.env.PORT || 4200;
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}

@@ -5,6 +5,9 @@ metadata:
   namespace: crda-namespace
 data:
   init.sql: |
+    CREATE USER 'app_user'@'%' IDENTIFIED BY '${MYSQL_APP_PASSWORD}';
+    GRANT SELECT, INSERT, UPDATE ON base_crda.* TO 'app_user'@'%';
+    
     CREATE DATABASE IF NOT EXISTS base_crda;
     USE base_crda;
 

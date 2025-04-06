@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: crda-namespace
+  labels:
+    env: production
+    team: devops

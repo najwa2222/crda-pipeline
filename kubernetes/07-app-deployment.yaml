@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-deployment
+  namespace: crda-namespace
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: crda-app
+      tier: backend
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: crda-app
+        tier: backend
+    spec:
+      securityContext:
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: crda-app
+        image: najwa22/crda-app:latest
+        ports:
+        - containerPort: 4200
+        env:
+        - name: MYSQL_HOST
+          value: "mysql-service.crda-namespace.svc.cluster.local"
+        - name: MYSQL_USER
+          value: "app_user"
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: app-password
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 4200
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 4200
+          initialDelaySeconds: 5
+          periodSeconds: 10
