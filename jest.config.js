@@ -1,9 +1,12 @@
-export default {
+module.exports = {
   testEnvironment: 'node',
   collectCoverage: true,
   coverageReporters: ['lcov', 'text', 'html'],
   reporters: ['default', 'jest-junit'],
-  testMatch: ['test/**/*.test.js'],
+  testMatch: ['**/?(*.)+(spec|test).[jt]s?(x)'],
   coverageDirectory: 'coverage',
-  testResultsProcessor: 'jest-junit'
+  testResultsProcessor: 'jest-junit',
+  transform: {
+    "^.+\\.js$": "babel-jest"
+  }
 };
