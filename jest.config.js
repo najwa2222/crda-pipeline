@@ -3,7 +3,7 @@ export default {
   collectCoverage: true,
   coverageReporters: ['lcov', 'text', 'html'],
   reporters: ['default', 'jest-junit'],
-  testMatch: ['**/?(*.)+(spec|test).[jt]s?(x)'],
+  testMatch: ['test/**/*.test.js'],
   coverageDirectory: 'coverage',
   testResultsProcessor: 'jest-junit'
 };
