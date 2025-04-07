@@ -977,10 +977,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-
-// Export the app for testing
-module.exports = app;
-
 // Only start server if not in test environment
 if (process.env.NODE_ENV !== 'test') {
   const PORT = process.env.PORT || 4200;
@@ -988,3 +984,6 @@ if (process.env.NODE_ENV !== 'test') {
     logger.info(`Server running on port ${PORT}`);
   });
 }
+
+// Export the app for testing
+export default app;

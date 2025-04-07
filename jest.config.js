@@ -1,10 +1,20 @@
-export const testEnvironment = 'node';
-export const collectCoverage = true;
-export const coverageReporters = ['lcov', 'text', 'html'];
-export const reporters = ['default', 'jest-junit'];
-export const testMatch = ['**/?(*.)+(spec|test).[jt]s?(x)'];
-export const coverageDirectory = 'coverage';
-export const testResultsProcessor = 'jest-junit';
-export const transform = {
-  "^.+\\.js$": "babel-jest"
+export default {
+  transform: {},
+  extensionsToTreatAsEsm: ['.js'],
+  testEnvironment: 'node',
+  reporters: [
+    'default',
+    ['jest-junit', {
+      outputDirectory: './test-results',
+      outputName: 'results.xml',
+    }]
+  ],
+  coverageReporters: ['text', 'cobertura'],
+  collectCoverageFrom: [
+    '**/*.js',
+    '!**/node_modules/**',
+    '!**/vendor/**',
+    '!**/coverage/**',
+    '!jest.config.js',
+  ],
 };

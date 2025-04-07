@@ -32,11 +32,24 @@ pipeline {
         
         stage('Unit Tests') {
         steps {
-            bat 'npm test -- --ci --reporters=jest-junit --coverage'
+            // Create test-results directory first
+            bat 'mkdir test-results || echo Directory exists'
+
+            // Run tests
+            bat 'npm run test:coverage'
+            
+            // Add debug step to see if files are created
+            bat 'dir test-results /s'
+            
+            // Specify the exact path to junit results
+            junit 'test-results/results.xml'
+            
+            // For coverage reports
+            cobertura coberturaReportFile: 'coverage/cobertura-coverage.xml'
         }
         post {
             always {
-            junit 'test-results/jest-junit.xml'
+            junit 'test-results/results.xml'
             cobertura coberturaReportFile: 'coverage/lcov.info'
             }
         }
@@ -55,7 +68,7 @@ pipeline {
                             -Dsonar.login=${SONAR_TOKEN} ^
                             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
                             -Dsonar.tests=test ^
-                            -Dsonar.testExecutionReportPaths=test-results/junit.xml ^
+                            -Dsonar.testExecutionReportPaths=test-results/results.xml ^
                             -Dsonar.coverage.exclusions=**/test/**,**/node_modules/** ^
                             -Dsonar.qualitygate.wait=true ^
                             -Dsonar.exclusions=**/*.spec.js,**/*.test.js,public/**,kubernetes/**

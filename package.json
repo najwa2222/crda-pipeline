@@ -12,12 +12,12 @@
     "test": "jest --detectOpenHandles --forceExit",
     "test:ci": "jest --ci --runInBand --detectOpenHandles --forceExit",
     "lint:fix": "eslint . --ext .js --fix",
-    "test:coverage": "jest --coverage --detectOpenHandles --forceExit",
+    "test:coverage": "set NODE_OPTIONS=--experimental-vm-modules && jest --detectOpenHandles --forceExit --ci --coverage",
     "sonar": "sonar-scanner"
   },
   "jest-junit": {
-    "outputDirectory": "test-results",
-    "outputName": "jest-junit.xml",
+    "outputDirectory": "./test-results/",
+    "outputName": "results.xml",
     "classNameTemplate": "{classname}",
     "titleTemplate": "{title}",
     "ancestorSeparator": " › "
