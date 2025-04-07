@@ -9,31 +9,33 @@ pipeline {
         SONAR_PROJECT_KEY = "najwa22_crda-app"
         SONAR_SERVER_URL = "http://localhost:9000"
         SONAR_TOKEN_CREDENTIALS_ID = "sonarqube-token"
-        // Fix Windows path issues
-        LCOV_PATH = "coverage\\lcov.info"
-        COBERTURA_PATH = "coverage\\cobertura-coverage.xml"
-        JUNIT_PATH = "test-results\\jest-junit.xml"
+
+        // Windows path handling
+        WORKSPACE = "${env.WORKSPACE}".replace('/', '\\')
+        LCOV_PATH = "${WORKSPACE}\\coverage\\lcov.info"
+        COBERTURA_PATH = "${WORKSPACE}\\coverage\\cobertura-coverage.xml"
+        JUNIT_PATH = "${WORKSPACE}\\test-results\\jest-junit.xml"
         NODE_OPTIONS = "--experimental-vm-modules --no-warnings"
     }
 
     options {
-    timeout(time: 60, unit: 'MINUTES')
-    disableConcurrentBuilds()
+        timeout(time: 60, unit: 'MINUTES')
+        disableConcurrentBuilds()
     }
-    
+
     stages {
         stage('Checkout SCM') {
             steps {
                 git url: 'https://github.com/najwa2222/crda-pipeline.git', branch: 'main'
             }
         }
-        
+
         stage('Install Dependencies') {
             steps {
                 bat 'npm ci --prefer-offline --no-audit --no-fund'
             }
         }
-        
+
         stage('Static Code Analysis') {
             steps {
                 bat 'npm run lint'
@@ -49,35 +51,30 @@ pipeline {
 
         stage('Unit Tests') {
             steps {
-                bat '''
+                bat """
                     @echo off
-                    :: Force Windows-style path resolution
-                    set NODE_OPTIONS=--experimental-vm-modules
-                    
-                    :: Safe directory creation
-                    if not exist test-results mkdir test-results
-                    if not exist coverage mkdir coverage
-                    
-                    :: Run tests with Windows path handling
-                    call npm run test:ci
-                    call npm run test:coverage
-                    
-                    :: Fix path separators in coverage files
+                    :: Robust directory creation
+                    if not exist "test-results" mkdir test-results
+                    if not exist "coverage" mkdir coverage
+
+                    :: Run tests with error handling
+                    call npm run test:ci || exit /b 1
+                    call npm run test:coverage || exit /b 1
+
+                    :: Normalize paths for Windows
                     powershell -Command "(Get-Content coverage\\lcov.info) -replace '/', '\\' | Set-Content coverage\\lcov.info"
-                    '''
+                    powershell -Command "(Get-Content coverage\\lcov.info) -replace '${env.WORKSPACE.replace('\\','\\\\')}', '' | Set-Content coverage\\lcov.info"
+                """
             }
             post {
                 always {
-                    bat 'powershell -Command "(Get-Content coverage\\lcov.info) -replace \'/mnt/c/\', \'C:\\\\\'"'
                     junit testResults: 'test-results/**/*.xml', allowEmptyResults: true
                     cobertura coberturaReportFile: 'coverage/cobertura-coverage.xml', onlyStable: false
-                    bat 'dir /s /b test-results'
-                    bat 'type coverage\\lcov.info'
-                    bat 'type test-results\\results.xml'
+                    archiveArtifacts artifacts: 'test-results/**/*.xml,coverage/**/*.*', allowEmptyArchive: true
                 }
             }
         }
-        
+
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('SonarQube') {
@@ -89,9 +86,8 @@ pipeline {
                             -Dsonar.sources=app.js,controllers,models,routes,utils ^
                             -Dsonar.host.url=${SONAR_SERVER_URL} ^
                             -Dsonar.login=${SONAR_TOKEN} ^
-                            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
-                            -Dsonar.tests=test ^
-                            -Dsonar.testExecutionReportPaths=test-results/results.xml ^
+                            -Dsonar.javascript.lcov.reportPaths=${LCOV_PATH} ^
+                            -Dsonar.testExecutionReportPaths=${JUNIT_PATH} ^
                             -Dsonar.coverage.exclusions=**/test/**,**/node_modules/** ^
                             -Dsonar.qualitygate.wait=true ^
                             -Dsonar.exclusions=**/*.spec.js,**/*.test.js,public/**,kubernetes/**
@@ -100,7 +96,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Build Docker Image') {
             steps {
                 script {
@@ -108,7 +104,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Push to Docker Hub') {
             steps {
                 withCredentials([usernamePassword(
@@ -125,13 +121,13 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Deploy to Kubernetes') {
             steps {
                 script {
                     // Create namespace if not exists
                     bat "kubectl create namespace ${KUBE_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -"
-                    
+
                     // Create secret with both passwords
                     withCredentials([
                         string(credentialsId: 'mysql-root-password', variable: 'MYSQL_ROOT_PASSWORD'),
@@ -145,7 +141,7 @@ pipeline {
                                 --dry-run=client -o yaml | kubectl apply -f -
                         """
                     }
-                    
+
                     // Apply all manifests in order
                     dir('kubernetes') {
                         def manifestOrder = [
@@ -158,7 +154,7 @@ pipeline {
                             '07-app-deployment.yaml',
                             '08-app-service.yaml'
                         ]
-                        
+
                         manifestOrder.each { file ->
                             bat "kubectl apply -f ${file} --namespace ${KUBE_NAMESPACE}"
                             if (file =~ /deployment.yaml$/) {
@@ -170,7 +166,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Verify Deployment') {
             steps {
                 script {
@@ -182,7 +178,7 @@ pipeline {
             }
         }
     }
-    
+
     post {
         always {
             echo 'Cleaning workspace'
