@@ -1,27 +1,23 @@
 FROM node:18.20.3-alpine
 
-# Install system dependencies
+# Install Python and build tools
 RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
-# Copy package files first for better layer caching
 COPY package*.json ./
 
-# Install production dependencies first
-RUN npm ci --only=production
+# Install both production and development dependencies
+RUN npm ci --include=dev
 
-# Install development dependencies separately
-RUN npm ci --only=development
-
-# Copy application files
 COPY . .
 
-# Build application (if needed)
+# Build application
 RUN npm run build
 
-# Cleanup development dependencies for production image
-RUN npm prune --production
+# Clean dev dependencies
+RUN npm prune --omit=dev
 
-EXPOSE 4200
+EXPOSE 3000
+
 CMD ["node", "app.js"]

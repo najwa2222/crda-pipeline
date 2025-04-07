@@ -32,21 +32,36 @@ app.use((req, res, next) => {
 });
 
 // Database connection setup
-const connection = mysql.createConnection({
-  host: process.env.MYSQL_HOST,
-  user: process.env.MYSQL_USER,
-  password: process.env.MYSQL_PASSWORD,
-  database: process.env.MYSQL_DATABASE,
-  port: process.env.MYSQL_PORT
-});
+const connectWithRetry = () => {
+  return new Promise((resolve, reject) => {
+    const connection = mysql.createConnection({
+      host: process.env.MYSQL_HOST,
+      user: process.env.MYSQL_USER,
+      password: process.env.MYSQL_PASSWORD,
+      database: process.env.MYSQL_DATABASE,
+      port: process.env.MYSQL_PORT || 3306
+    });
 
-connection.connect((err) => {
-  if (err) {
-    logger.error('Error connecting to MySQL server: ' + err.stack);
-    return;
-  }
-  logger.info(`Connected to MySQL server as ID ${connection.threadId}`);
-});
+    const attemptConnect = (retries = 5) => {
+      connection.connect(err => {
+        if (err) {
+          if (retries > 0) {
+            logger.error(`MySQL connection failed, ${retries} retries left`);
+            setTimeout(() => attemptConnect(retries - 1), 5000);
+          } else {
+            logger.error('Final MySQL connection error:', err.stack);
+            reject(err);
+          }
+        } else {
+          logger.info(`Connected to MySQL as ID ${connection.threadId}`);
+          resolve(connection);
+        }
+      });
+    };
+
+    attemptConnect();
+  });
+};
 
 // Health check route
 app.get('/health', (req, res) => {

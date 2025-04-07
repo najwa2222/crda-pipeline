@@ -13,52 +13,38 @@ spec:
     rollingUpdate:
       maxSurge: 2
       maxUnavailable: 1
-    type: RollingUpdate
   template:
-    metadata:
-      labels:
-        app: crda-app
-        tier: backend
     spec:
       initContainers:
-      - name: check-mysql
+      - name: db-check
         image: busybox:1.35
         command: ['sh', '-c', 
-          'until nc -zv mysql-service.crda-namespace.svc.cluster.local 3306; do echo "Waiting for MySQL"; sleep 2; done']
-      securityContext:
-        runAsUser: 1000
-        fsGroup: 1000
+          'until nc -zw 2 mysql-service 3306; do echo "Waiting for DB"; sleep 2; done']
       containers:
-      - name: crda-app
-        image: najwa22/crda-app:75  # Pinned version
+      - name: app
+        image: najwa22/crda-app:latest
         ports:
         - containerPort: 3000
         env:
-        - name: MYSQL_HOST
-          value: "mysql-service.crda-namespace.svc.cluster.local"
-        - name: MYSQL_USER
-          value: "app_user"
-        - name: MYSQL_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mysql-secret
-              key: app-password
+        - name: NODE_ENV
+          value: "production"
         startupProbe:
           httpGet:
             path: /health
             port: 3000
-          failureThreshold: 40
+          initialDelaySeconds: 15
           periodSeconds: 10
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 3000
-          initialDelaySeconds: 120
-          periodSeconds: 30
+          failureThreshold: 30
         readinessProbe:
           httpGet:
             path: /health
             port: 3000
-          initialDelaySeconds: 90
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          failureThreshold: 12
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 60
           periodSeconds: 15
-          failureThreshold: 8
