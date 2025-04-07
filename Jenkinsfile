@@ -34,7 +34,7 @@ pipeline {
                 bat 'npm run lint'
             }
         }
-        
+
         stage('Test Existence Check') {
             steps {
                 bat 'if not exist "test" (echo No test directory found && exit /b 1)'
@@ -44,27 +44,32 @@ pipeline {
 
         stage('Unit Tests') {
             steps {
-                // First ensure directories exist
-                bat 'mkdir test-results coverage || echo "Directories exist"'
-                
-                // DEBUG: List the contents of the current directory
-                bat 'dir'
-                
-                // Execute tests with JUnit reporter
-                bat 'npm run test:ci'
-                
-                // Run coverage tests
-                bat 'npm run test:coverage'
-                
-                // DEBUG: Check if test results were generated
-                bat 'dir test-results /s'
-                bat 'dir coverage /s'
+                bat '''
+                    @echo off
+                    :: Force directory creation with Windows path handling
+                    if not exist "test-results" mkdir test-results
+                    if not exist "coverage" mkdir coverage
+                    
+                    :: Run tests with error level checking
+                    call npm run test:ci || exit /b 1
+                    call npm run test:coverage || exit /b 1
+                    
+                    :: Verify artifact generation
+                    if not exist "test-results\\results.xml" (
+                        echo Missing test results file! && exit /b 1
+                    )
+                    if not exist "coverage\\lcov.info" (
+                        echo Missing coverage data! && exit /b 1
+                    )
+                    '''
             }
             post {
                 always {
-                    // Use allowEmptyResults to prevent failing the build if no reports found
-                    junit allowEmptyResults: true, testResults: 'test-results/results.xml'
+                    junit testResults: 'test-results/**/*.xml', allowEmptyResults: true
                     cobertura coberturaReportFile: 'coverage/cobertura-coverage.xml', onlyStable: false
+                    bat 'dir /s /b test-results'
+                    bat 'type coverage\\lcov.info'
+                    bat 'type test-results\\results.xml'
                 }
             }
         }
