@@ -34,8 +34,9 @@ pipeline {
 
         stage('Static Code Analysis') {
             steps {
-                bat 'npm run lint'
-                bat 'npm run lint:fix'
+                // Explicitly specify config file path
+                bat 'npm run lint -- --config .eslintrc.cjs'
+                bat 'npm run lint:fix -- --config .eslintrc.cjs'
             }
         }
 
