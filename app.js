@@ -1,74 +1,74 @@
 /* eslint-env node */
-// Replace all require() statements with imports
 import express from 'express';
 import { engine } from 'express-handlebars';
-import mysql from 'mysql2';
+import mysql from 'mysql2/promise';
 import cors from 'cors';
 import session from 'express-session';
 import logger from './utils/logger.js';
 
-// Initialize the Express application
+// Initialize Express application
 const app = express();
 
-// Body parsing middleware
+// Database connection setup
+let connection;
+const MAX_RETRIES = 5;
+const RETRY_INTERVAL = 5000;
+
+async function createConnection() {
+  try {
+    const conn = await mysql.createConnection({
+      host: process.env.MYSQL_HOST,
+      user: process.env.MYSQL_USER,
+      password: process.env.MYSQL_PASSWORD,
+      database: process.env.MYSQL_DATABASE,
+      port: process.env.MYSQL_PORT || 3306,
+    });
+    logger.info(`Connected to MySQL server as ID ${conn.threadId}`);
+    return conn;
+  } catch (error) {
+    logger.error('MySQL connection error:', error.message);
+    throw error;
+  }
+}
+
+async function initializeDatabase(retries = MAX_RETRIES) {
+  try {
+    connection = await createConnection();
+  } catch (error) {
+    if (retries > 0) {
+      logger.info(`Retrying connection... (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})`);
+      setTimeout(() => initializeDatabase(retries - 1), RETRY_INTERVAL);
+    } else {
+      logger.error('Failed to connect to MySQL after retries');
+      process.exit(1);
+    }
+  }
+}
+
+// Middleware setup
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Serve static files and enable CORS
 app.use(express.static('public'));
 app.use(cors());
-
-// Configure session middleware
 app.use(session({
   secret: 'QSM45ED2A45MZDQSD452QS2MD2K',
   resave: false,
   saveUninitialized: true,
 }));
 
-// Attach user info to response locals
 app.use((req, res, next) => {
   res.locals.user = req.session.user || null;
   next();
 });
 
-// Database connection setup
-const connectWithRetry = () => {
-  return new Promise((resolve, reject) => {
-    const connection = mysql.createConnection({
-      host: process.env.MYSQL_HOST,
-      user: process.env.MYSQL_USER,
-      password: process.env.MYSQL_PASSWORD,
-      database: process.env.MYSQL_DATABASE,
-      port: process.env.MYSQL_PORT || 3306
-    });
-
-    const attemptConnect = (retries = 5) => {
-      connection.connect(err => {
-        if (err) {
-          if (retries > 0) {
-            logger.error(`MySQL connection failed, ${retries} retries left`);
-            setTimeout(() => attemptConnect(retries - 1), 5000);
-          } else {
-            logger.error('Final MySQL connection error:', err.stack);
-            reject(err);
-          }
-        } else {
-          logger.info(`Connected to MySQL as ID ${connection.threadId}`);
-          resolve(connection);
-        }
-      });
-    };
-
-    attemptConnect();
-  });
-};
-
-// Health check route
-app.get('/health', (req, res) => {
-  connection.query('SELECT 1', (err) => {
-    if (err) return res.status(500).send('DB connection failed');
+// Health check endpoint
+app.get('/health', async (req, res) => {
+  try {
+    await connection.query('SELECT 1');
     res.status(200).send('OK');
-  });
+  } catch (error) {
+    res.status(500).send('DB connection failed');
+  }
 });
 
 // View engine configuration for Handlebars
@@ -82,8 +82,8 @@ app.engine('.hbs', engine({
         case 'مرفوض': return 'bg-red-100 text-red-800 border-red-200';
         default: return 'bg-gray-100 text-gray-800 border-gray-200';
       }
-    }
-  }
+    },
+  },
 }));
 app.set('view engine', '.hbs');
 app.set('views', './views');
@@ -95,19 +95,17 @@ function isAuthenticated(req, res, next) {
 }
 
 // Role-based authorization middleware
-const checkRole = (allowedRoles) => {
-  return (req, res, next) => {
-    if (!req.session.user || !allowedRoles.includes(req.session.user.role_user)) {
-      return res.redirect('/login?error=unauthorized');
-    }
-    next();
-  };
+const createRoleCheck = (...allowedRoles) => (req, res, next) => {
+  if (!req.session.user?.role_user || !allowedRoles.includes(req.session.user.role_user)) {
+    return res.redirect('/login?error=unauthorized');
+  }
+  next();
 };
 
-const isChef = checkRole(['chef_dentreprise']);
-const isGerant = checkRole(['gerant']);
-const isDirecteur = checkRole(['directeur']);
-const isGerantOrDirecteur = checkRole(['gerant', 'directeur']);
+const isChef = createRoleCheck('chef_dentreprise');
+const isGerant = createRoleCheck('gerant');
+const isDirecteur = createRoleCheck('directeur');
+const isGerantOrDirecteur = createRoleCheck('gerant', 'directeur');
 
 /* ====== GET Routes ====== */
 
@@ -122,7 +120,7 @@ app.get('/login', (req, res) => {
     title: 'تسجيل الدخول',
     layout: 'main',
     error: req.query.error,
-    success: req.query.success
+    success: req.query.success,
   });
 });
 
@@ -155,7 +153,7 @@ app.get('/report', isAuthenticated, isGerant, (req, res) => {
     sujet,
     prenom,
     nom,
-    user: req.session.user
+    user: req.session.user,
   });
 });
 
@@ -165,57 +163,69 @@ app.get('/afficher', isAuthenticated, (req, res) => {
 });
 
 // Get services with status
-app.get('/getservices', isAuthenticated, isChef, (req, res) => {
-  const sql = `
-    SELECT s.*, 
-           IF(r.id IS NOT NULL, 'تم', 'قيد الانتظار') AS status
-    FROM services_utilisateur s
-    LEFT JOIN rapport r 
-      ON s.cin = r.cin AND s.sujet = r.sujet
-  `;
-  connection.query(sql, (err, results) => {
-    if (err) return res.status(500).send('Database error');
+app.get('/getservices', isAuthenticated, isChef, async (req, res) => {
+  try {
+    const [services] = await connection.query(`
+      SELECT s.*, 
+             IF(r.id IS NOT NULL, 'تم', 'قيد الانتظار') AS status
+      FROM services_utilisateur s
+      LEFT JOIN rapport r ON s.cin = r.cin AND s.sujet = r.sujet
+    `);
     res.render('afficher', {
       title: 'المحتوى',
-      services: results,
-      helpers: { eq: (a, b) => a === b }
+      services,
+      helpers: { eq: (a, b) => a === b },
     });
-  });
+  } catch (error) {
+    logger.error('Database error:', error);
+    res.status(500).send('Database error');
+  }
 });
 
 // API: Get a specific service
-app.get('/api/services/:id', isAuthenticated, isChef, (req, res) => {
-  const sql = 'SELECT * FROM services_utilisateur WHERE id = ?';
-  connection.query(sql, [req.params.id], (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(result[0]);
-  });
+app.get('/api/services/:id', isAuthenticated, isChef, async (req, res) => {
+  try {
+    const [rows] = await connection.query(
+      'SELECT * FROM services_utilisateur WHERE id = ?',
+      [req.params.id]
+    );
+    res.json(rows[0] || {});
+  } catch (error) {
+    logger.error('Database error:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 // Edit service page
-app.get('/editservice/:id', isAuthenticated, isChef, (req, res) => {
-  const sql = 'SELECT * FROM services_utilisateur WHERE id = ?';
-  connection.query(sql, [req.params.id], (err, results) => {
-    if (err || results.length === 0) return res.redirect('/getservices');
+app.get('/editservice/:id', isAuthenticated, isChef, async (req, res) => {
+  try {
+    const [results] = await connection.query(
+      'SELECT * FROM services_utilisateur WHERE id = ?',
+      [req.params.id]
+    );
+    if (!results.length) return res.redirect('/getservices');
     res.render('editservice', {
       title: 'تعديل الطلب',
       layout: 'main',
       service: results[0],
-      user: req.session.user
+      user: req.session.user,
     });
-  });
+  } catch (error) {
+    logger.error('Database error:', error);
+    res.redirect('/getservices');
+  }
 });
 
 // View report page (accessible by gerant or directeur)
-app.get('/viewreport', isAuthenticated, isGerantOrDirecteur, (req, res) => {
+app.get('/viewreport', isAuthenticated, isGerantOrDirecteur, async (req, res) => {
   const { cin, sujet } = req.query;
-  const reportQuery = `
-    SELECT * FROM rapport 
-    WHERE cin = ? AND sujet = ?
-  `;
-  connection.query(reportQuery, [cin, sujet], (err, results) => {
-    if (err || results.length === 0) {
-      logger.error('View Report Error:', err?.message || 'No report found');
+  try {
+    const [results] = await connection.query(`
+      SELECT * FROM rapport 
+      WHERE cin = ? AND sujet = ?
+    `, [cin, sujet]);
+    if (!results.length) {
+      logger.error('No report found for viewreport');
       return req.session.user.role_user === 'gerant'
         ? res.redirect('/getreports')
         : res.redirect('/results');
@@ -225,9 +235,14 @@ app.get('/viewreport', isAuthenticated, isGerantOrDirecteur, (req, res) => {
       layout: 'main',
       isViewing: true,
       report: results[0],
-      user: req.session.user
+      user: req.session.user,
     });
-  });
+  } catch (error) {
+    logger.error('View Report Error:', error.message);
+    return req.session.user.role_user === 'gerant'
+      ? res.redirect('/getreports')
+      : res.redirect('/results');
+  }
 });
 
 // Cancel report redirect
@@ -236,19 +251,18 @@ app.get('/cancelreport', isAuthenticated, (req, res) => {
 });
 
 // Results page (accessible by directeur)
-app.get('/results', isAuthenticated, isDirecteur, (req, res) => {
-  const sql = `
-    SELECT 
-      s.*, 
-      r.statut,
-      rap.id AS report_id
-    FROM services_utilisateur s
-    LEFT JOIN results r ON s.cin = r.cin AND s.sujet = r.sujet
-    INNER JOIN rapport rap ON s.cin = rap.cin AND s.sujet = rap.sujet
-    ORDER BY s.id DESC;
-  `;
-  connection.query(sql, (err, services) => {
-    if (err) return res.status(500).send('Database error');
+app.get('/results', isAuthenticated, isDirecteur, async (req, res) => {
+  try {
+    const [services] = await connection.query(`
+      SELECT 
+        s.*, 
+        r.statut,
+        rap.id AS report_id
+      FROM services_utilisateur s
+      LEFT JOIN results r ON s.cin = r.cin AND s.sujet = r.sujet
+      INNER JOIN rapport rap ON s.cin = rap.cin AND s.sujet = rap.sujet
+      ORDER BY s.id DESC;
+    `);
     res.render('results', {
       title: 'النتائج النهائية',
       services,
@@ -259,63 +273,71 @@ app.get('/results', isAuthenticated, isDirecteur, (req, res) => {
             case 'مرفوض': return 'bg-red-100 text-red-800 border-red-200';
             default: return 'bg-gray-100 text-gray-800 border-gray-200';
           }
-        }
-      }
+        },
+      },
     });
-  });
+  } catch (error) {
+    logger.error('Database error:', error);
+    res.status(500).send('Database error');
+  }
 });
 
 // Delete result API route
-app.delete('/api/results', isAuthenticated, (req, res) => {
+app.delete('/api/results', isAuthenticated, async (req, res) => {
   const { cin, sujet } = req.body;
-  const sql = 'DELETE FROM results WHERE cin = ? AND sujet = ?';
-  connection.query(sql, [cin, sujet], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+  try {
+    await connection.query(
+      'DELETE FROM results WHERE cin = ? AND sujet = ?',
+      [cin, sujet]
+    );
     res.json({ success: true });
-  });
+  } catch (error) {
+    logger.error('Database error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Edit result page (accessible by directeur)
-app.get('/editresult/:id', isAuthenticated, isDirecteur, (req, res) => {
-  const sql = `
-    SELECT s.*, r.statut 
-    FROM services_utilisateur s
-    LEFT JOIN results r ON s.cin = r.cin AND s.sujet = r.sujet
-    WHERE s.id = ?
-  `;
-  connection.query(sql, [req.params.id], (err, results) => {
-    if (err || results.length === 0) return res.redirect('/results');
+app.get('/editresult/:id', isAuthenticated, isDirecteur, async (req, res) => {
+  try {
+    const [results] = await connection.query(`
+      SELECT s.*, r.statut 
+      FROM services_utilisateur s
+      LEFT JOIN results r ON s.cin = r.cin AND s.sujet = r.sujet
+      WHERE s.id = ?
+    `, [req.params.id]);
+    if (!results.length) return res.redirect('/results');
     res.render('editresult', {
       title: 'تعديل النتيجة',
       service: results[0],
       result: results[0].statut || 'pending',
-      helpers: { eq: (a, b) => a === b }
+      helpers: { eq: (a, b) => a === b },
     });
-  });
+  } catch (error) {
+    logger.error('Database error:', error);
+    res.redirect('/results');
+  }
 });
 
-// Update result
-app.post('/updateresult', isAuthenticated, isDirecteur, (req, res) => {
+// Update result endpoint
+app.post('/updateresult', isAuthenticated, isDirecteur, async (req, res) => {
   const { id, sujet, nom, prenom, cin, numero_transaction, statut } = req.body;
-  const allowedStatuses = ['مقبول', 'مرفوض'];
-  if (!allowedStatuses.includes(statut)) {
+  if (!['مقبول', 'مرفوض'].includes(statut)) {
     return res.status(400).send('الحالة المحددة غير صالحة');
   }
-  const sql = `
-    INSERT INTO results (sujet, nom, prenom, cin, numero_transaction, statut)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON DUPLICATE KEY UPDATE statut = ?
-  `;
-  connection.query(sql,
-    [sujet, nom, prenom, cin, numero_transaction, statut, statut],
-    (err) => {
-      if (err) {
-        logger.error('Result Update Error:', err);
-        return res.redirect(`/editresult/${id}?error=update_failed`);
-      }
-      res.redirect('/results');
-    }
-  );
+  try {
+    await connection.query(`
+      INSERT INTO results 
+        (sujet, nom, prenom, cin, numero_transaction, statut)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE statut = ?`,
+      [sujet, nom, prenom, cin, numero_transaction, statut, statut]
+    );
+    res.redirect('/results');
+  } catch (error) {
+    logger.error('Update error:', error);
+    res.redirect(`/editresult/${id}?error=update_failed`);
+  }
 });
 
 // Check status page
@@ -323,125 +345,121 @@ app.get('/check-status', (req, res) => {
   res.render('check-status', { title: 'التحقق من الحالة', result: null, error: null });
 });
 
-app.post('/check-status', (req, res) => {
+app.post('/check-status', async (req, res) => {
   const { cin, transaction_number } = req.body;
   if (!cin || !transaction_number) {
     return res.render('check-status', {
       title: 'التحقق من الحالة',
       error: 'الرجاء إدخال جميع الحقول المطلوبة',
-      formData: req.body
+      formData: req.body,
     });
   }
-  const sql = `
-    SELECT s.*, r.statut 
-    FROM services_utilisateur s
-    LEFT JOIN results r ON s.cin = r.cin AND s.sujet = r.sujet
-    WHERE s.cin = ? AND s.numero_transaction = ?
-  `;
-  connection.query(sql, [cin, transaction_number], (err, results) => {
-    if (err) {
-      logger.error('Status Check Error:', err);
-      return res.render('check-status', {
-        title: 'التحقق من الحالة',
-        error: 'حدث خطأ في النظام',
-        formData: req.body
-      });
-    }
-    if (results.length === 0) {
+  try {
+    const [results] = await connection.query(`
+      SELECT s.*, r.statut 
+      FROM services_utilisateur s
+      LEFT JOIN results r ON s.cin = r.cin AND s.sujet = r.sujet
+      WHERE s.cin = ? AND s.numero_transaction = ?
+    `, [cin, transaction_number]);
+    if (!results.length) {
       return res.render('check-status', {
         title: 'التحقق من الحالة',
         error: 'لم يتم العثور على نتائج مطابقة',
-        formData: req.body
+        formData: req.body,
       });
     }
     res.render('check-status', { title: 'التحقق من الحالة', result: results[0], error: null });
-  });
+  } catch (error) {
+    logger.error('Status Check Error:', error);
+    res.render('check-status', {
+      title: 'التحقق من الحالة',
+      error: 'حدث خطأ في النظام',
+      formData: req.body,
+    });
+  }
 });
 
 // Get all reports (accessible by gerant)
-app.get('/getreports', isAuthenticated, isGerant, (req, res) => {
-  const sql = `
-    SELECT 
-      s.id AS service_id,
-      s.sujet,
-      s.prenom,
-      s.nom,
-      s.cin,
-      s.numero_transaction,
-      r.surface,
-      r.limites_terrain,
-      r.localisation,
-      r.superficie_batiments_anciens,
-      r.id AS report_id
-    FROM services_utilisateur s
-    LEFT JOIN rapport r ON s.cin = r.cin AND s.sujet = r.sujet
-    ORDER BY s.id DESC
-  `;
-  connection.query(sql, (err, results) => {
-    if (err) return res.status(500).send('Database error');
+app.get('/getreports', isAuthenticated, isGerant, async (req, res) => {
+  try {
+    const [results] = await connection.query(`
+      SELECT 
+        s.id AS service_id,
+        s.sujet,
+        s.prenom,
+        s.nom,
+        s.cin,
+        s.numero_transaction,
+        r.surface,
+        r.limites_terrain,
+        r.localisation,
+        r.superficie_batiments_anciens,
+        r.id AS report_id
+      FROM services_utilisateur s
+      LEFT JOIN rapport r ON s.cin = r.cin AND s.sujet = r.sujet
+      ORDER BY s.id DESC
+    `);
     res.render('reports', { title: 'التقارير', services: results });
-  });
+  } catch (error) {
+    logger.error('Database error:', error);
+    res.status(500).send('Database error');
+  }
 });
 
 // Delete report route (accessible by gerant)
-app.delete('/api/reports/:id', isAuthenticated, isGerant, (req, res) => {
+app.delete('/api/reports/:id', isAuthenticated, isGerant, async (req, res) => {
   const reportId = req.params.id;
-  connection.beginTransaction(err => {
-    if (err) return res.status(500).json({ success: false, message: 'Failed to start transaction' });
-    const rollback = (res, err) => {
-      logger.error('Error during transaction:', err);
-      connection.rollback(() => {
-        res.status(500).json({ success: false, message: err.message || 'An error occurred during the database operation' });
-      });
-    };
-    connection.query('SELECT cin, sujet FROM rapport WHERE id = ?', [reportId], (err, results) => {
-      if (err) return rollback(res, err);
-      if (results.length === 0) return rollback(res, new Error('Report not found'));
-      const { cin, sujet } = results[0];
-      connection.query('DELETE FROM results WHERE cin = ? AND sujet = ?', [cin, sujet], (err) => {
-        if (err) return rollback(res, err);
-        connection.query('DELETE FROM rapport WHERE id = ?', [reportId], (err) => {
-          if (err) return rollback(res, err);
-          connection.commit(err => {
-            if (err) return rollback(res, err);
-            res.json({ success: true });
-          });
-        });
-      });
-    });
-  });
+  try {
+    await connection.beginTransaction();
+    const [results] = await connection.query('SELECT cin, sujet FROM rapport WHERE id = ?', [reportId]);
+    if (!results.length) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+    const { cin, sujet } = results[0];
+    await connection.query('DELETE FROM results WHERE cin = ? AND sujet = ?', [cin, sujet]);
+    await connection.query('DELETE FROM rapport WHERE id = ?', [reportId]);
+    await connection.commit();
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error during transaction:', error);
+    await connection.rollback();
+    res.status(500).json({ success: false, message: error.message || 'An error occurred during the database operation' });
+  }
 });
 
 // Edit report page (accessible by gerant)
-app.get('/editreport/:id', isAuthenticated, isGerant, (req, res) => {
-  const sql = 'SELECT * FROM rapport WHERE id = ?';
-  connection.query(sql, [req.params.id], (err, results) => {
-    if (err || results.length === 0) return res.redirect('/getreports');
+app.get('/editreport/:id', isAuthenticated, isGerant, async (req, res) => {
+  try {
+    const [results] = await connection.query('SELECT * FROM rapport WHERE id = ?', [req.params.id]);
+    if (!results.length) return res.redirect('/getreports');
     res.render('edit-report', { title: 'تعديل التقرير', report: results[0], user: req.session.user });
-  });
+  } catch (error) {
+    logger.error('Database error:', error);
+    res.redirect('/getreports');
+  }
 });
 
 // Update report
-app.post('/updatereport/:id', isAuthenticated, isGerant, (req, res) => {
+app.post('/updatereport/:id', isAuthenticated, isGerant, async (req, res) => {
   const { surface, limites_terrain, localisation, superficie_batiments_anciens, observations } = req.body;
-  const sql = `
-    UPDATE rapport 
-    SET 
-      surface = ?,
-      limites_terrain = ?,
-      localisation = ?,
-      superficie_batiments_anciens = ?,
-      observations = ?
-    WHERE id = ?
-  `;
-  const values = [surface, limites_terrain, localisation, superficie_batiments_anciens, observations, req.params.id];
-  connection.query(sql, values, (err) => {
-    if (err) {
-      logger.error('Update Error:', err);
-      return res.redirect(`/editreport/${req.params.id}?error=update_failed`);
-    }
+  try {
+    await connection.query(`
+      UPDATE rapport 
+      SET 
+        surface = ?,
+        limites_terrain = ?,
+        localisation = ?,
+        superficie_batiments_anciens = ?,
+        observations = ?
+      WHERE id = ?`,
+      [surface, limites_terrain, localisation, superficie_batiments_anciens, observations, req.params.id]
+    );
     res.redirect('/getreports');
-  });
+  } catch (error) {
+    logger.error('Update Error:', error);
+    res.redirect(`/editreport/${req.params.id}?error=update_failed`);
+  }
 });
 
 // Registration pages
@@ -456,81 +474,84 @@ app.get('/register', (req, res) => {
     title: 'تسجيل جديد',
     layout: 'main',
     error: req.query.error,
-    success: req.query.success
+    success: req.query.success,
   });
 });
 
 // Handle registration
-app.post('/register', (req, res) => {
+app.post('/register', async (req, res) => {
   const { email_user, password_user, role_user, nom_user, prenom_user, sex_user, cin_user } = req.body;
   if (!email_user.endsWith('@crda.com')) return res.redirect('/register?error=invalid_domain');
   if (!email_user || !password_user || !role_user || !nom_user || !prenom_user || !sex_user || !cin_user) {
     return res.redirect('/register?error=missing_fields');
   }
-  connection.query(
-    'SELECT * FROM utilisateur WHERE email_user = ? OR cin_user = ?',
-    [email_user, cin_user],
-    (error, results) => {
-      if (error) return res.redirect('/register?error=database_error');
-      if (results.length > 0) return res.redirect('/register?error=exists');
-      connection.query(
-        `INSERT INTO utilisateur 
-         (email_user, password_user, role_user, status_user, nom_user, prenom_user, sex_user, cin_user) 
-         VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)`,
-        [email_user, password_user, role_user, nom_user, prenom_user, sex_user, cin_user],
-        (insertError) => {
-          if (insertError) return res.redirect('/register?error=database_error');
-          res.redirect('/pending_approval');
-        }
-      );
-    }
-  );
+  try {
+    const [existing] = await connection.query(
+      'SELECT * FROM utilisateur WHERE email_user = ? OR cin_user = ?',
+      [email_user, cin_user]
+    );
+    if (existing.length > 0) return res.redirect('/register?error=exists');
+    await connection.query(
+      `INSERT INTO utilisateur 
+       (email_user, password_user, role_user, status_user, nom_user, prenom_user, sex_user, cin_user) 
+       VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)`,
+      [email_user, password_user, role_user, nom_user, prenom_user, sex_user, cin_user]
+    );
+    res.redirect('/pending_approval');
+  } catch (error) {
+    logger.error('Registration error:', error);
+    res.redirect('/register?error=database_error');
+  }
 });
 
 // Admin routes (accessible by directeur)
-app.get('/admin/pending-accounts', isAuthenticated, isDirecteur, (req, res) => {
-  connection.query(
-    'SELECT id, email_user, nom_user, prenom_user, role_user FROM utilisateur WHERE status_user = "pending"',
-    (err, results) => {
-      if (err) return res.status(500).send('Database error');
-      res.render('admin/pending-accounts', { title: 'الحسابات المعلقة', accounts: results });
-    }
-  );
+app.get('/admin/pending-accounts', isAuthenticated, isDirecteur, async (req, res) => {
+  try {
+    const [results] = await connection.query(
+      'SELECT id, email_user, nom_user, prenom_user, role_user FROM utilisateur WHERE status_user = "pending"'
+    );
+    res.render('admin/pending-accounts', { title: 'الحسابات المعلقة', accounts: results });
+  } catch (error) {
+    logger.error('Database error:', error);
+    res.status(500).send('Database error');
+  }
 });
 
-app.post('/admin/approve-account/:id', isAuthenticated, isDirecteur, (req, res) => {
-  connection.query(
-    'UPDATE utilisateur SET status_user = "approved" WHERE id = ?',
-    [req.params.id],
-    (err) => {
-      if (err) {
-        logger.error('Approve Error:', err);
-        return res.status(500).redirect('/admin/pending-accounts?error=approve_failed');
-      }
-      res.redirect('/admin/pending-accounts');
-    }
-  );
+app.post('/admin/approve-account/:id', isAuthenticated, isDirecteur, async (req, res) => {
+  try {
+    await connection.query(
+      'UPDATE utilisateur SET status_user = "approved" WHERE id = ?',
+      [req.params.id]
+    );
+    res.redirect('/admin/pending-accounts');
+  } catch (error) {
+    logger.error('Approve Error:', error);
+    res.redirect('/admin/pending-accounts?error=approve_failed');
+  }
 });
 
-app.post('/admin/reject-account/:id', isAuthenticated, isDirecteur, (req, res) => {
-  connection.query(
-    'DELETE FROM utilisateur WHERE id = ?',
-    [req.params.id],
-    (err) => {
-      if (err) {
-        logger.error('Reject Error:', err);
-        return res.status(500).redirect('/admin/pending-accounts?error=reject_failed');
-      }
-      res.redirect('/admin/pending-accounts');
-    }
-  );
+app.post('/admin/reject-account/:id', isAuthenticated, isDirecteur, async (req, res) => {
+  try {
+    await connection.query(
+      'DELETE FROM utilisateur WHERE id = ?',
+      [req.params.id]
+    );
+    res.redirect('/admin/pending-accounts');
+  } catch (error) {
+    logger.error('Reject Error:', error);
+    res.redirect('/admin/pending-accounts?error=reject_failed');
+  }
 });
 
 /* ====== Error Handling ====== */
 
-// Global error handler for API errors
-app.use((error, req, res) => {
-  res.status(error.status || 500).json({ message: error.message || 'Erreur interne du serveur' });
+// Global error handler for API errors and fallback for rendering error pages
+app.use((err, req, res, next) => {
+  logger.error('Unhandled error:', err);
+  res.status(500).render('error', {
+    message: 'حدث خطأ غير متوقع',
+    error: process.env.NODE_ENV === 'development' ? err : {},
+  });
 });
 
 // 404 error handler
@@ -540,21 +561,12 @@ app.use((req, res, next) => {
   next(error);
 });
 
-// Final error handler for rendering error pages
-app.use((err, req, res) => {
-  logger.error('Global Error:', err);
-  res.status(500).render('error', {
-    message: 'حدث خطأ غير متوقع',
-    error: process.env.NODE_ENV === 'development' ? err : {}
-  });
-});
-
-// Start the server if not in test environment
-if (process.env.NODE_ENV !== 'test') {
+// Start the server after DB connection is established
+initializeDatabase().then(() => {
   const PORT = process.env.PORT || 4200;
-  app.listen(PORT, '0.0.0.0', () => {
+  app.listen(PORT, () => {
     logger.info(`Server running on port ${PORT}`);
   });
-}
+});
 
 export default app;
