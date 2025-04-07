@@ -40,6 +40,8 @@ spec:
             secretKeyRef:
               name: mysql-secret
               key: app-password
+        - name: MYSQL_ARGS
+          value: "--default-authentication-plugin=mysql_native_password"
         livenessProbe:
           exec:
             command:

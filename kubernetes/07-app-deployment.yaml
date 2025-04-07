@@ -31,23 +31,33 @@ spec:
         env:
         - name: NODE_ENV
           value: "production"
+        - name: MYSQL_HOST
+          value: "mysql-service"       # Service name for MySQL
+        - name: MYSQL_USER
+          value: "app_user"            # From MySQL deployment
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret       # Must match the secret name
+              key: app-password        # Key holding app_user's password
+        - name: MYSQL_DATABASE
+          value: "base_crda"           # Database name from MySQL deployment
         startupProbe:
           httpGet:
             path: /health
             port: 3000
-          initialDelaySeconds: 15
+          initialDelaySeconds: 60  # Give the app more time to start
           periodSeconds: 10
-          failureThreshold: 30
+          failureThreshold: 5      # Reduce failure threshold
         readinessProbe:
           httpGet:
             path: /health
             port: 3000
-          initialDelaySeconds: 20
-          periodSeconds: 5
-          failureThreshold: 12
+          initialDelaySeconds: 30  # Delay longer before checking
+          periodSeconds: 10
         livenessProbe:
           httpGet:
             path: /health
             port: 3000
-          initialDelaySeconds: 60
+          initialDelaySeconds: 90  # Allow even more time for startup
           periodSeconds: 15
