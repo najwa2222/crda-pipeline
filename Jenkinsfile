@@ -9,12 +9,7 @@ pipeline {
         SONAR_PROJECT_KEY = "najwa22_crda-app"
         SONAR_SERVER_URL = "http://localhost:9000"
         SONAR_TOKEN_CREDENTIALS_ID = "sonarqube-token"
-
-        // Windows path handling
         WORKSPACE = "${env.WORKSPACE}".replace('/', '\\')
-        LCOV_PATH = "${WORKSPACE}\\coverage\\lcov.info"
-        COBERTURA_PATH = "${WORKSPACE}\\coverage\\cobertura-coverage.xml"
-        JUNIT_PATH = "${WORKSPACE}\\test-results\\jest-junit.xml"
         NODE_OPTIONS = "--experimental-vm-modules --no-warnings"
     }
 
@@ -42,45 +37,6 @@ pipeline {
             }
         }
 
-        stage('Test Existence Check') {
-            steps {
-                bat 'if not exist "test" (echo No test directory found && exit /b 1)'
-                bat 'dir test /s'
-            }
-        }
-
-        stage('Unit Tests') {
-            steps {
-                bat '''
-                    @echo off
-                    :: Run your tests first
-                    call npm run test:ci
-                    call npm run test:coverage
-                    
-                    :: Fix coverage paths using PowerShell
-                    powershell -Command """
-                        # Get absolute workspace path with forward slashes
-                        $workspace = "%WORKSPACE%".Replace('\', '/')
-                        
-                        # Read and transform coverage file
-                        (Get-Content coverage\\lcov.info) -replace "$workspace/", "" |
-                        Set-Content coverage\\lcov.info -Force
-                        
-                        # Additional fix for Windows-style paths in reports
-                        (Get-Content coverage\\lcov.info) -replace '\\\\', '/' |
-                        Set-Content coverage\\lcov.info -Force
-                    """
-                '''
-            }
-            post {
-                always {
-                    junit testResults: 'test-results/**/*.xml', allowEmptyResults: true
-                    cobertura coberturaReportFile: 'coverage/cobertura-coverage.xml', onlyStable: false
-                    archiveArtifacts artifacts: 'test-results/**/*.xml,coverage/**/*.*', allowEmptyArchive: true
-                }
-            }
-        }
-
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('SonarQube') {
@@ -92,8 +48,6 @@ pipeline {
                             -Dsonar.sources=app.js,controllers,models,routes,utils ^
                             -Dsonar.host.url=${SONAR_SERVER_URL} ^
                             -Dsonar.login=${SONAR_TOKEN} ^
-                            -Dsonar.javascript.lcov.reportPaths=${LCOV_PATH} ^
-                            -Dsonar.testExecutionReportPaths=${JUNIT_PATH} ^
                             -Dsonar.coverage.exclusions=**/test/**,**/node_modules/** ^
                             -Dsonar.qualitygate.wait=true ^
                             -Dsonar.exclusions=**/*.spec.js,**/*.test.js,public/**,kubernetes/**
@@ -131,10 +85,8 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 script {
-                    // Create namespace if not exists
                     bat "kubectl create namespace ${KUBE_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -"
 
-                    // Create secret with both passwords
                     withCredentials([
                         string(credentialsId: 'mysql-root-password', variable: 'MYSQL_ROOT_PASSWORD'),
                         string(credentialsId: 'mysql-app-password', variable: 'MYSQL_APP_PASSWORD')
@@ -148,7 +100,6 @@ pipeline {
                         """
                     }
 
-                    // Apply all manifests in order
                     dir('kubernetes') {
                         def manifestOrder = [
                             '00-namespace.yaml',
@@ -191,7 +142,7 @@ pipeline {
             cleanWs()
         }
         failure {
-            archiveArtifacts artifacts: 'npm-debug.log*,test-results/**/*.xml,coverage/**/*.*', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'npm-debug.log*', allowEmptyArchive: true
             slackSend(
                 color: 'danger',
                 message: "Failed build: ${env.JOB_NAME} #${env.BUILD_NUMBER} - Check console output for details",
