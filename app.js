@@ -42,7 +42,7 @@ const connection = mysql.createConnection({
 
 connection.connect((err) => {
   if (err) {
-    console.error('Error connecting to MySQL server: ' + err.stack);
+    logger.error('Error connecting to MySQL server: ' + err.stack);
     return;
   }
   logger.info(`Connected to MySQL server as ID ${connection.threadId}`);
@@ -200,7 +200,7 @@ app.get('/viewreport', isAuthenticated, isGerantOrDirecteur, (req, res) => {
   `;
   connection.query(reportQuery, [cin, sujet], (err, results) => {
     if (err || results.length === 0) {
-      console.error('View Report Error:', err?.message || 'No report found');
+      logger.error('View Report Error:', err?.message || 'No report found');
       return req.session.user.role_user === 'gerant'
         ? res.redirect('/getreports')
         : res.redirect('/results');
@@ -295,7 +295,7 @@ app.post('/updateresult', isAuthenticated, isDirecteur, (req, res) => {
     [sujet, nom, prenom, cin, numero_transaction, statut, statut],
     (err) => {
       if (err) {
-        console.error('Result Update Error:', err);
+        logger.error('Result Update Error:', err);
         return res.redirect(`/editresult/${id}?error=update_failed`);
       }
       res.redirect('/results');
@@ -325,7 +325,7 @@ app.post('/check-status', (req, res) => {
   `;
   connection.query(sql, [cin, transaction_number], (err, results) => {
     if (err) {
-      console.error('Status Check Error:', err);
+      logger.error('Status Check Error:', err);
       return res.render('check-status', {
         title: 'التحقق من الحالة',
         error: 'حدث خطأ في النظام',
@@ -374,7 +374,7 @@ app.delete('/api/reports/:id', isAuthenticated, isGerant, (req, res) => {
   connection.beginTransaction(err => {
     if (err) return res.status(500).json({ success: false, message: 'Failed to start transaction' });
     const rollback = (res, err) => {
-      console.error('Error during transaction:', err);
+      logger.error('Error during transaction:', err);
       connection.rollback(() => {
         res.status(500).json({ success: false, message: err.message || 'An error occurred during the database operation' });
       });
@@ -422,7 +422,7 @@ app.post('/updatereport/:id', isAuthenticated, isGerant, (req, res) => {
   const values = [surface, limites_terrain, localisation, superficie_batiments_anciens, observations, req.params.id];
   connection.query(sql, values, (err) => {
     if (err) {
-      console.error('Update Error:', err);
+      logger.error('Update Error:', err);
       return res.redirect(`/editreport/${req.params.id}?error=update_failed`);
     }
     res.redirect('/getreports');
@@ -489,7 +489,7 @@ app.post('/admin/approve-account/:id', isAuthenticated, isDirecteur, (req, res) 
     [req.params.id],
     (err) => {
       if (err) {
-        console.error('Approve Error:', err);
+        logger.error('Approve Error:', err);
         return res.status(500).redirect('/admin/pending-accounts?error=approve_failed');
       }
       res.redirect('/admin/pending-accounts');
@@ -503,7 +503,7 @@ app.post('/admin/reject-account/:id', isAuthenticated, isDirecteur, (req, res) =
     [req.params.id],
     (err) => {
       if (err) {
-        console.error('Reject Error:', err);
+        logger.error('Reject Error:', err);
         return res.status(500).redirect('/admin/pending-accounts?error=reject_failed');
       }
       res.redirect('/admin/pending-accounts');
@@ -527,7 +527,7 @@ app.use((req, res, next) => {
 
 // Final error handler for rendering error pages
 app.use((err, req, res) => {
-  console.error('Global Error:', err);
+  logger.error('Global Error:', err);
   res.status(500).render('error', {
     message: 'حدث خطأ غير متوقع',
     error: process.env.NODE_ENV === 'development' ? err : {}
