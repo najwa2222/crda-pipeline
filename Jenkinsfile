@@ -10,6 +10,11 @@ pipeline {
         SONAR_SERVER_URL = "http://localhost:9000"
         SONAR_TOKEN_CREDENTIALS_ID = "sonarqube-token"
     }
+
+    options {
+    timeout(time: 60, unit: 'MINUTES')
+    disableConcurrentBuilds()
+    }
     
     stages {
         stage('Checkout SCM') {
@@ -31,28 +36,29 @@ pipeline {
         }
         
         stage('Unit Tests') {
-        steps {
-            // Create test-results directory first
-            bat 'mkdir test-results || echo Directory exists'
-
-            // Run tests
-            bat 'npm run test:coverage'
-            
-            // Add debug step to see if files are created
-            bat 'dir test-results /s'
-            
-            // Specify the exact path to junit results
-            junit 'test-results/results.xml'
-            
-            // For coverage reports
-            cobertura coberturaReportFile: 'coverage/cobertura-coverage.xml'
-        }
-        post {
-            always {
-            junit 'test-results/results.xml'
-            cobertura coberturaReportFile: 'coverage/lcov.info'
+            steps {
+                // Create test directories first
+                bat 'mkdir test-results coverage || echo "Directories exist"'
+                
+                // Run tests with JUnit reporter
+                bat 'npm run test:ci'
+                
+                // Run coverage tests separately
+                bat 'npm run test:coverage'
+                
+                // Debug: List generated files
+                bat 'dir test-results /s'
+                bat 'dir coverage /s'
             }
-        }
+            post {
+                always {
+                    // Collect test reports
+                    junit allowEmptyResults: true, testResults: 'test-results/results.xml'
+                    
+                    // Collect coverage reports - corrected path
+                    cobertura coberturaReportFile: 'coverage/cobertura-coverage.xml', onlyStable: false
+                }
+            }
         }
         
         stage('SonarQube Analysis') {
@@ -163,21 +169,27 @@ pipeline {
     post {
         always {
             echo 'Cleaning workspace'
-            cleanWs()
+            // Archive test results regardless of build result
             junit allowEmptyResults: true, testResults: 'test-results/**/*.xml'
+            // Archive coverage reports regardless of build result
+            archiveArtifacts allowEmptyArchive: true, artifacts: 'coverage/**'
+            // Clean workspace at the end
+            cleanWs()
+        }
+        failure {
+           // Save logs for debugging
+            archiveArtifacts allowEmptyArchive: true, artifacts: 'npm-debug.log*'
+            slackSend(
+                color: 'danger',
+                message: "Failed build: ${env.JOB_NAME} #${env.BUILD_NUMBER} - Check console output for details",
+                channel: '#jenkins-builds',
+                tokenCredentialId: 'slack-token'
+            )
         }
         success {
             slackSend(
             color: 'good',
             message: "Successful build: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-            channel: '#jenkins-builds',
-            tokenCredentialId: 'slack-token' // Create this credential in Jenkins
-            )
-        }
-        failure {
-            slackSend(
-            color: 'danger',
-            message: "Failed build: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
             channel: '#jenkins-builds',
             tokenCredentialId: 'slack-token'
             )

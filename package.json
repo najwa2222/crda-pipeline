@@ -10,9 +10,9 @@
     "css": "npx tailwindcss -i ./src/input.css -o ./public/css/styles.css",
     "lint": "eslint . --fix",
     "test": "jest --detectOpenHandles --forceExit",
-    "test:ci": "jest --ci --runInBand --detectOpenHandles --forceExit",
+    "test:ci": "jest --ci --runInBand --detectOpenHandles --forceExit --reporters=default --reporters=jest-junit",
+    "test:coverage": "jest --detectOpenHandles --forceExit --ci --coverage",
     "lint:fix": "eslint . --ext .js --fix",
-    "test:coverage": "set NODE_OPTIONS=--experimental-vm-modules && jest --detectOpenHandles --forceExit --ci --coverage",
     "sonar": "sonar-scanner"
   },
   "jest-junit": {
