@@ -35,27 +35,35 @@ pipeline {
             }
         }
         
+        stage('Test Existence Check') {
+            steps {
+                bat 'if not exist "test" (echo No test directory found && exit /b 1)'
+                bat 'dir test /s'
+            }
+        }
+
         stage('Unit Tests') {
             steps {
-                // Create test directories first
+                // First ensure directories exist
                 bat 'mkdir test-results coverage || echo "Directories exist"'
                 
-                // Run tests with JUnit reporter
+                // DEBUG: List the contents of the current directory
+                bat 'dir'
+                
+                // Execute tests with JUnit reporter
                 bat 'npm run test:ci'
                 
-                // Run coverage tests separately
+                // Run coverage tests
                 bat 'npm run test:coverage'
                 
-                // Debug: List generated files
+                // DEBUG: Check if test results were generated
                 bat 'dir test-results /s'
                 bat 'dir coverage /s'
             }
             post {
                 always {
-                    // Collect test reports
+                    // Use allowEmptyResults to prevent failing the build if no reports found
                     junit allowEmptyResults: true, testResults: 'test-results/results.xml'
-                    
-                    // Collect coverage reports - corrected path
                     cobertura coberturaReportFile: 'coverage/cobertura-coverage.xml', onlyStable: false
                 }
             }

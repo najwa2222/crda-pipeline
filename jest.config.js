@@ -1,9 +1,9 @@
 export default {
+  testEnvironment: 'node',
   transform: {
     "^.+\\.jsx?$": "babel-jest"
   },
-  testEnvironment: 'node',
-  // Generate both JUnit and coverage reports
+  // Generate both JUnit reports
   reporters: [
     'default',
     ['jest-junit', {
@@ -15,9 +15,13 @@ export default {
   collectCoverage: true,
   coverageDirectory: './coverage/',
   coverageReporters: ['text', 'lcov', 'cobertura'],
-  // For ES modules support
+  // Handle ESM modules
   extensionsToTreatAsEsm: ['.js'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
+  // Set test match patterns
+  testMatch: ['**/__tests__/**/*.js', '**/?(*.)+(spec|test).js'],
+  // Set timeout for tests
+  testTimeout: 30000
 };
