@@ -4,6 +4,9 @@ const mysql = require('mysql');
 const cors = require('cors');
 const session = require('express-session');
 import logger from './utils/logger';
+import dotenv from 'dotenv';
+dotenv.config({ path: process.env.NODE_ENV === 'test' ? '.env.test' : '.env' });
+
 // Initialization of the Express application
 const app = express();
 
