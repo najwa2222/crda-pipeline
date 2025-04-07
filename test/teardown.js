@@ -1,15 +1,11 @@
-const mysql = require('mysql2/promise');
-const dbConfig = require('../db.config');
+// test/teardown.js (critical for Windows)
+import mongoose from 'mongoose';
+import { deleteDatabase } from '../utils/database';
 
-module.exports = async () => {
-  const connection = await mysql.createConnection({
-    host: dbConfig.host,
-    user: dbConfig.user,
-    password: dbConfig.password
+export default async () => {
+  await deleteDatabase();
+  await mongoose.disconnect().catch(err => {
+    console.error('Mongoose disconnection error:', err);
+    process.exit(1);
   });
-  
-  await connection.query(
-    `DROP DATABASE IF EXISTS \`${dbConfig.database}_test\`;`
-  );
-  await connection.end();
 };

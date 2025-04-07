@@ -10,8 +10,8 @@
     "css": "npx tailwindcss -i ./src/input.css -o ./public/css/styles.css",
     "lint": "eslint . --fix",
     "test": "jest --detectOpenHandles --forceExit --runInBand",
-    "test:ci": "jest --ci --maxWorkers=4 --detectOpenHandles --forceExit --logHeapUsage",
-    "test:coverage": "jest --coverage --coverageReporters=text-lcov --coverageDirectory=coverage --detectOpenHandles --forceExit",
+    "test:ci": "set NODE_OPTIONS=--experimental-vm-modules && jest --ci --maxWorkers=4 --detectOpenHandles --forceExit",
+    "test:coverage": "set NODE_OPTIONS=--experimental-vm-modules && jest --coverage --coverageReporters=text-lcov --coverageDirectory=coverage --detectOpenHandles",
     "test:debug": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand --detectOpenHandles --verbose",
     "lint:fix": "eslint . --ext .js --fix",
     "sonar": "sonar-scanner"
@@ -45,6 +45,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.26.10",
+    "@babel/plugin-transform-modules-commonjs": "^7.26.3",
     "@babel/plugin-transform-runtime": "^7.26.10",
     "@babel/preset-env": "^7.26.9",
     "@babel/runtime-corejs3": "^7.27.0",
@@ -53,7 +54,7 @@
     "@types/mysql": "^2.15.26",
     "autoprefixer": "^10.4.20",
     "babel-jest": "^29.7.0",
-    "core-js": "^3.36.1",
+    "core-js": "^3.41.0",
     "eslint": "^9.24.0",
     "eslint-plugin-jest": "^28.11.0",
     "eslint-plugin-node": "^11.1.0",

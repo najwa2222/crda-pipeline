@@ -7,5 +7,7 @@ module.exports = {
       corejs: 3
     }]
   ],
-  sourceType: 'unambiguous'
+  plugins: [
+    '@babel/plugin-transform-modules-commonjs'
+  ]
 };

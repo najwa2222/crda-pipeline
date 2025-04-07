@@ -13,4 +13,9 @@ module.exports = async () => {
     `CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}_test\`;`
   );
   await connection.end();
+  // test/setup.js
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
 };

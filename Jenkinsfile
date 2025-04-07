@@ -51,20 +51,26 @@ pipeline {
 
         stage('Unit Tests') {
             steps {
-                bat """
+                bat '''
                     @echo off
-                    :: Robust directory creation
-                    if not exist "test-results" mkdir test-results
-                    if not exist "coverage" mkdir coverage
-
-                    :: Run tests with error handling
-                    call npm run test:ci || exit /b 1
-                    call npm run test:coverage || exit /b 1
-
-                    :: Normalize paths for Windows
-                    powershell -Command "(Get-Content coverage\\lcov.info) -replace '/', '\\' | Set-Content coverage\\lcov.info"
-                    powershell -Command "(Get-Content coverage\\lcov.info) -replace '${env.WORKSPACE.replace('\\','\\\\')}', '' | Set-Content coverage\\lcov.info"
-                """
+                    :: Run your tests first
+                    call npm run test:ci
+                    call npm run test:coverage
+                    
+                    :: Fix coverage paths using PowerShell
+                    powershell -Command """
+                        # Get absolute workspace path with forward slashes
+                        $workspace = "%WORKSPACE%".Replace('\', '/')
+                        
+                        # Read and transform coverage file
+                        (Get-Content coverage\\lcov.info) -replace "$workspace/", "" |
+                        Set-Content coverage\\lcov.info -Force
+                        
+                        # Additional fix for Windows-style paths in reports
+                        (Get-Content coverage\\lcov.info) -replace '\\\\', '/' |
+                        Set-Content coverage\\lcov.info -Force
+                    """
+                '''
             }
             post {
                 always {
