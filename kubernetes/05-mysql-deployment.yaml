@@ -30,31 +30,22 @@ spec:
           valueFrom:
             secretKeyRef:
               name: mysql-secret
-              key: root-password  # Fixed key
+              key: root-password
         - name: MYSQL_DATABASE
           value: "base_crda"
-        - name: APP_DB_PASSWORD
+        - name: MYSQL_USER
+          value: "app_user"
+        - name: MYSQL_PASSWORD
           valueFrom:
             secretKeyRef:
               name: mysql-secret
               key: app-password
-        volumeMounts:
-        - name: mysql-persistent-storage
-          mountPath: /var/lib/mysql
-        - name: init-script
-          mountPath: /docker-entrypoint-initdb.d
         livenessProbe:
           exec:
             command:
-              - sh
-              - -c
-              - "mysqladmin ping -uroot -p${MYSQL_ROOT_PASSWORD}"  # Fixed probe
-          initialDelaySeconds: 30
-          periodSeconds: 10
-      volumes:
-      - name: mysql-persistent-storage
-        persistentVolumeClaim:
-          claimName: mysql-pvc
-      - name: init-script
-        configMap:
-          name: mysql-init-script
+              - mysqladmin
+              - ping
+              - "-uapp_user"
+              - "-p$(MYSQL_PASSWORD)"
+          initialDelaySeconds: 45
+          periodSeconds: 15
