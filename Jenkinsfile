@@ -47,7 +47,7 @@ pipeline {
                     -Dsonar.projectName=${DOCKER_IMAGE} ^
                     -Dsonar.sources=app.js,controllers,models,routes,utils ^
                     -Dsonar.host.url=${SONAR_SERVER_URL} ^
-                    -Dsonar.token=${SONAR_TOKEN} ^ // Updated from login to token
+                    -Dsonar.token=${SONAR_TOKEN} ^
                     -Dsonar.qualitygate.wait=true ^
                     -Dsonar.exclusions=**/*.spec.js,**/*.test.js,public/**,kubernetes/**
                     """
