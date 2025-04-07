@@ -4,6 +4,7 @@ import { engine } from 'express-handlebars';
 import mysql from 'mysql2/promise';
 import cors from 'cors';
 import session from 'express-session';
+import bcrypt from 'bcrypt';
 import logger from './utils/logger.js';
 
 // Initialize Express application
@@ -25,21 +26,21 @@ async function createConnection() {
     });
     logger.info(`Connected to MySQL server as ID ${conn.threadId}`);
     return conn;
-  } catch (error) {
-    logger.error('MySQL connection error:', error.message);
-    throw error;
+  } catch (err) {
+    logger.error('MySQL connection error:', err.message);
+    throw err;
   }
 }
 
 async function initializeDatabase(retries = MAX_RETRIES) {
   try {
     connection = await createConnection();
-  } catch (error) {
+  } catch (err) {
     if (retries > 0) {
       logger.info(`Retrying connection... (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})`);
       setTimeout(() => initializeDatabase(retries - 1), RETRY_INTERVAL);
     } else {
-      logger.error('Failed to connect to MySQL after retries');
+      logger.error('Failed to connect to MySQL after retries:', err.message);
       process.exit(1);
     }
   }
@@ -52,11 +53,13 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 app.use(cors());
 app.use(session({
-  secret: process.env.SESSION_SECRET, // Add to .env file
+  secret: process.env.SESSION_SECRET || 'default-secure-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false, // Changed from true
   cookie: { 
-    secure: process.env.NODE_ENV === 'production'
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    sameSite: 'strict'
   }
 }));
 
@@ -70,7 +73,8 @@ app.get('/health', async (req, res) => {
   try {
     await connection.query('SELECT 1');
     res.status(200).send('OK');
-  } catch (error) {
+  } catch (err) {
+    logger.error('Health check failed:', err.message);
     res.status(500).send('DB connection failed');
   }
 });
@@ -131,7 +135,10 @@ app.get('/login', (req, res) => {
 // Logout
 app.get('/logout', (req, res) => {
   req.session.destroy((err) => {
-    if (err) return res.redirect('/services?error=session_error');
+    if (err) {
+      logger.error('Session destruction error:', err.message);
+      return res.redirect('/services?error=session_error');
+    }
     res.redirect('/login');
   });
 });
@@ -180,8 +187,8 @@ app.get('/getservices', isAuthenticated, isChef, async (req, res) => {
       services,
       helpers: { eq: (a, b) => a === b },
     });
-  } catch (error) {
-    logger.error('Database error:', error);
+  } catch (err) {
+    logger.error('Database error:', err.message);
     res.status(500).send('Database error');
   }
 });
@@ -194,8 +201,8 @@ app.get('/api/services/:id', isAuthenticated, isChef, async (req, res) => {
       [req.params.id]
     );
     res.json(rows[0] || {});
-  } catch (error) {
-    logger.error('Database error:', error);
+  } catch (err) {
+    logger.error('Database error:', err.message);
     res.status(500).json({ error: 'Database error' });
   }
 });
@@ -214,8 +221,8 @@ app.get('/editservice/:id', isAuthenticated, isChef, async (req, res) => {
       service: results[0],
       user: req.session.user,
     });
-  } catch (error) {
-    logger.error('Database error:', error);
+  } catch (err) {
+    logger.error('Database error:', err.message);
     res.redirect('/getservices');
   }
 });
@@ -241,8 +248,8 @@ app.get('/viewreport', isAuthenticated, isGerantOrDirecteur, async (req, res) =>
       report: results[0],
       user: req.session.user,
     });
-  } catch (error) {
-    logger.error('View Report Error:', error.message);
+  } catch (err) {
+    logger.error('View Report Error:', err.message);
     return req.session.user.role_user === 'gerant'
       ? res.redirect('/getreports')
       : res.redirect('/results');
@@ -280,8 +287,8 @@ app.get('/results', isAuthenticated, isDirecteur, async (req, res) => {
         },
       },
     });
-  } catch (error) {
-    logger.error('Database error:', error);
+  } catch (err) {
+    logger.error('Database error:', err.message);
     res.status(500).send('Database error');
   }
 });
@@ -295,9 +302,9 @@ app.delete('/api/results', isAuthenticated, async (req, res) => {
       [cin, sujet]
     );
     res.json({ success: true });
-  } catch (error) {
-    logger.error('Database error:', error);
-    res.status(500).json({ error: error.message });
+  } catch (err) {
+    logger.error('Database error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -317,8 +324,8 @@ app.get('/editresult/:id', isAuthenticated, isDirecteur, async (req, res) => {
       result: results[0].statut || 'pending',
       helpers: { eq: (a, b) => a === b },
     });
-  } catch (error) {
-    logger.error('Database error:', error);
+  } catch (err) {
+    logger.error('Database error:', err.message);
     res.redirect('/results');
   }
 });
@@ -338,8 +345,8 @@ app.post('/updateresult', isAuthenticated, isDirecteur, async (req, res) => {
       [sujet, nom, prenom, cin, numero_transaction, statut, statut]
     );
     res.redirect('/results');
-  } catch (error) {
-    logger.error('Update error:', error);
+  } catch (err) {
+    logger.error('Update error:', err.message);
     res.redirect(`/editresult/${id}?error=update_failed`);
   }
 });
@@ -373,8 +380,8 @@ app.post('/check-status', async (req, res) => {
       });
     }
     res.render('check-status', { title: 'التحقق من الحالة', result: results[0], error: null });
-  } catch (error) {
-    logger.error('Status Check Error:', error);
+  } catch (err) {
+    logger.error('Status Check Error:', err.message);
     res.render('check-status', {
       title: 'التحقق من الحالة',
       error: 'حدث خطأ في النظام',
@@ -404,8 +411,8 @@ app.get('/getreports', isAuthenticated, isGerant, async (req, res) => {
       ORDER BY s.id DESC
     `);
     res.render('reports', { title: 'التقارير', services: results });
-  } catch (error) {
-    logger.error('Database error:', error);
+  } catch (err) {
+    logger.error('Database error:', err.message);
     res.status(500).send('Database error');
   }
 });
@@ -425,10 +432,10 @@ app.delete('/api/reports/:id', isAuthenticated, isGerant, async (req, res) => {
     await connection.query('DELETE FROM rapport WHERE id = ?', [reportId]);
     await connection.commit();
     res.json({ success: true });
-  } catch (error) {
-    logger.error('Error during transaction:', error);
+  } catch (err) {
+    logger.error('Error during transaction:', err.message);
     await connection.rollback();
-    res.status(500).json({ success: false, message: error.message || 'An error occurred during the database operation' });
+    res.status(500).json({ success: false, message: err.message || 'An error occurred during the database operation' });
   }
 });
 
@@ -438,8 +445,8 @@ app.get('/editreport/:id', isAuthenticated, isGerant, async (req, res) => {
     const [results] = await connection.query('SELECT * FROM rapport WHERE id = ?', [req.params.id]);
     if (!results.length) return res.redirect('/getreports');
     res.render('edit-report', { title: 'تعديل التقرير', report: results[0], user: req.session.user });
-  } catch (error) {
-    logger.error('Database error:', error);
+  } catch (err) {
+    logger.error('Database error:', err.message);
     res.redirect('/getreports');
   }
 });
@@ -460,8 +467,8 @@ app.post('/updatereport/:id', isAuthenticated, isGerant, async (req, res) => {
       [surface, limites_terrain, localisation, superficie_batiments_anciens, observations, req.params.id]
     );
     res.redirect('/getreports');
-  } catch (error) {
-    logger.error('Update Error:', error);
+  } catch (err) {
+    logger.error('Update Error:', err.message);
     res.redirect(`/editreport/${req.params.id}?error=update_failed`);
   }
 });
@@ -495,15 +502,19 @@ app.post('/register', async (req, res) => {
       [email_user, cin_user]
     );
     if (existing.length > 0) return res.redirect('/register?error=exists');
+    
+    // Hash password before storing
+    const hashedPassword = await bcrypt.hash(password_user, 10);
+    
     await connection.query(
       `INSERT INTO utilisateur 
        (email_user, password_user, role_user, status_user, nom_user, prenom_user, sex_user, cin_user) 
        VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)`,
-      [email_user, password_user, role_user, nom_user, prenom_user, sex_user, cin_user]
+      [email_user, hashedPassword, role_user, nom_user, prenom_user, sex_user, cin_user]
     );
     res.redirect('/pending_approval');
-  } catch (error) {
-    logger.error('Registration error:', error);
+  } catch (err) {
+    logger.error('Registration error:', err.message);
     res.redirect('/register?error=database_error');
   }
 });
@@ -515,8 +526,8 @@ app.get('/admin/pending-accounts', isAuthenticated, isDirecteur, async (req, res
       'SELECT id, email_user, nom_user, prenom_user, role_user FROM utilisateur WHERE status_user = "pending"'
     );
     res.render('admin/pending-accounts', { title: 'الحسابات المعلقة', accounts: results });
-  } catch (error) {
-    logger.error('Database error:', error);
+  } catch (err) {
+    logger.error('Database error:', err.message);
     res.status(500).send('Database error');
   }
 });
@@ -528,8 +539,8 @@ app.post('/admin/approve-account/:id', isAuthenticated, isDirecteur, async (req,
       [req.params.id]
     );
     res.redirect('/admin/pending-accounts');
-  } catch (error) {
-    logger.error('Approve Error:', error);
+  } catch (err) {
+    logger.error('Approve Error:', err.message);
     res.redirect('/admin/pending-accounts?error=approve_failed');
   }
 });
@@ -541,14 +552,14 @@ app.post('/admin/reject-account/:id', isAuthenticated, isDirecteur, async (req, 
       [req.params.id]
     );
     res.redirect('/admin/pending-accounts');
-  } catch (error) {
-    logger.error('Reject Error:', error);
+  } catch (err) {
+    logger.error('Reject Error:', err.message);
     res.redirect('/admin/pending-accounts?error=reject_failed');
   }
 });
 
-// Error handler middleware (line 549)
-app.use((err, req, res, next) => { // Add next even if unused
+// Error handler middleware
+app.use((err, req, res, next) => {
   logger.error('Error:', err);
   res.status(500).render('error', {
     message: 'حدث خطأ غير متوقع',
