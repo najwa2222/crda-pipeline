@@ -7,19 +7,22 @@ spec:
   replicas: 2
   selector:
     matchLabels:
-      app: crda-app
-      tier: backend
+      app: crda-app      # These labels must match
+      tier: backend      # the ones in template.metadata.labels
   strategy:
     rollingUpdate:
       maxSurge: 2
       maxUnavailable: 1
   template:
+    metadata:  # Added metadata section with labels
+      labels:
+        app: crda-app    # Must match the selector's matchLabels
+        tier: backend
     spec:
       initContainers:
       - name: db-check
         image: busybox:1.35
-        command: ['sh', '-c', 
-          'until nc -zw 2 mysql-service 3306; do echo "Waiting for DB"; sleep 2; done']
+        command: ['sh', '-c', 'until nc -zw 2 mysql-service 3306; do echo "Waiting for DB"; sleep 2; done']
       containers:
       - name: app
         image: najwa22/crda-app:latest
