@@ -45,15 +45,19 @@ async function initializeDatabase(retries = MAX_RETRIES) {
   }
 }
 
+
 // Middleware setup
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 app.use(cors());
 app.use(session({
-  secret: 'QSM45ED2A45MZDQSD452QS2MD2K',
+  secret: process.env.SESSION_SECRET, // Add to .env file
   resave: false,
-  saveUninitialized: true,
+  saveUninitialized: false, // Changed from true
+  cookie: { 
+    secure: process.env.NODE_ENV === 'production'
+  }
 }));
 
 app.use((req, res, next) => {
@@ -543,11 +547,9 @@ app.post('/admin/reject-account/:id', isAuthenticated, isDirecteur, async (req, 
   }
 });
 
-/* ====== Error Handling ====== */
-
-// Global error handler for API errors and fallback for rendering error pages
-app.use((err, req, res, next) => {
-  logger.error('Unhandled error:', err);
+// Error handler middleware (line 549)
+app.use((err, req, res, next) => { // Add next even if unused
+  logger.error('Error:', err);
   res.status(500).render('error', {
     message: 'حدث خطأ غير متوقع',
     error: process.env.NODE_ENV === 'development' ? err : {},

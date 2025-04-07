@@ -1,19 +1,19 @@
-# Stage 1: Build environment
+# Stage 1: Build environment 
 FROM node:18.20.3-alpine AS builder
 
 # Install build tools
 RUN apk add --no-cache python3 make g++ curl
 
-# Install wait-for script for database dependency check
+# Install wait-for script
 RUN curl -o /usr/local/bin/wait-for https://github.com/eficode/wait-for/releases/download/v2.2.3/wait-for && \
     chmod +x /usr/local/bin/wait-for
 
 WORKDIR /app
 
-# Copy package files first for better layer caching
+# Copy package files
 COPY package*.json ./
 
-# Install all dependencies including devDependencies
+# Install dependencies
 RUN npm ci --include=dev
 
 # Copy source files
@@ -22,42 +22,36 @@ COPY . .
 # Build application
 RUN npm run build
 
-# Stage 2: Production environment
+# Clean build tools
+RUN apk del python3 make g++ curl
+
+# --- Stage 2: Production environment ---
 FROM node:18.20.3-alpine
 
-# Set production environment variables
-ENV NODE_ENV=production
-ENV MYSQL_HOST=mysql-service.crda-namespace.svc.cluster.local
-ENV MYSQL_USER=app_user
-ENV MYSQL_DATABASE=base_crda
-ENV MYSQL_PORT=3306
+# Runtime environment
+ENV NODE_ENV=production \
+    PORT=3000
 
 WORKDIR /app
 
-# Copy package files from builder
-COPY --from=builder /app/package*.json ./
+# Copy production files (Note: .env file is not copied)
+COPY --from=builder --chown=node:node /app/package*.json ./
+COPY --from=builder --chown=node:node /app/public ./public
+COPY --from=builder --chown=node:node /app/app.js ./
+COPY --from=builder --chown=node:node /app/views ./views
+COPY --from=builder --chown=node:node /app/utils ./utils
+COPY --from=builder --chown=node:node /usr/local/bin/wait-for /usr/local/bin/wait-for
 
-# Install production dependencies only
+# Install production dependencies
 RUN npm ci --omit=dev
 
-# Copy built assets from builder
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.env ./
-COPY --from=builder /app/app.js ./
-COPY --from=builder /app/views ./views
-COPY --from=builder /app/utils ./utils
+# Set runtime user
+USER node
 
-# Copy wait-for script from builder
-COPY --from=builder /usr/local/bin/wait-for /usr/local/bin/wait-for
-
-# Create non-root user and set permissions
-RUN addgroup -S appgroup && \
-    adduser -S appuser -G appgroup && \
-    chown -R appuser:appgroup /app
-
-USER appuser
-
+# Expose port and add healthcheck
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s \
+  CMD curl -f http://localhost:3000/health || exit 1
 
-# Wait for MySQL to be ready before starting
-CMD ["sh", "-c", "wait-for $MYSQL_HOST:$MYSQL_PORT --timeout=300 -- node app.js"]
+# Startup command
+CMD ["sh", "-c", "wait-for ${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306} --timeout=300 -- node app.js"]

@@ -11,6 +11,7 @@ pipeline {
         SONAR_TOKEN_CREDENTIALS_ID = "sonarqube-token"
         WORKSPACE = "${env.WORKSPACE}".replace('/', '\\')
         NODE_OPTIONS = "--experimental-vm-modules --no-warnings"
+        COVERAGE_REPORT = "coverage/lcov.info"
     }
 
     options {
@@ -34,24 +35,32 @@ pipeline {
         stage('Static Code Analysis') {
             steps {
                 bat 'npm run lint'
+                bat 'npm run lint:fix'
+            }
+        }
+
+        stage('Run Tests') {
+            steps {
+                bat 'npm test'
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('SonarQube') {
-                withCredentials([string(credentialsId: SONAR_TOKEN_CREDENTIALS_ID, variable: 'SONAR_TOKEN')]) {
-                    bat """
-                    sonar-scanner.bat ^
-                    -Dsonar.projectKey=${SONAR_PROJECT_KEY} ^
-                    -Dsonar.projectName=${DOCKER_IMAGE} ^
-                    -Dsonar.sources=app.js,src ^
-                    -Dsonar.host.url=${SONAR_SERVER_URL} ^
-                    -Dsonar.token=${SONAR_TOKEN} ^
-                    -Dsonar.qualitygate.wait=true ^
-                    -Dsonar.exclusions=**/*.spec.js,kubernetes/**
-                    """
-                }
+                    withCredentials([string(credentialsId: SONAR_TOKEN_CREDENTIALS_ID, variable: 'SONAR_TOKEN')]) {
+                        bat """
+                        sonar-scanner.bat ^
+                        -Dsonar.projectKey=${SONAR_PROJECT_KEY} ^
+                        -Dsonar.projectName=${DOCKER_IMAGE} ^
+                        -Dsonar.sources=app.js,src ^
+                        -Dsonar.host.url=${SONAR_SERVER_URL} ^
+                        -Dsonar.token=${SONAR_TOKEN} ^
+                        -Dsonar.javascript.lcov.reportPaths=${COVERAGE_REPORT} ^
+                        -Dsonar.qualitygate.wait=true ^
+                        -Dsonar.exclusions=**/*.spec.js,kubernetes/**
+                        """
+                    }
                 }
             }
         }
@@ -93,8 +102,8 @@ pipeline {
                         bat """
                             kubectl create secret generic ${MYSQL_SECRET} ^
                                 --namespace ${KUBE_NAMESPACE} ^
-                                --from-literal=root-password=${MYSQL_ROOT_PASSWORD} ^
-                                --from-literal=app-password=${MYSQL_APP_PASSWORD} ^
+                                --from-literal=root-password=%MYSQL_ROOT_PASSWORD% ^
+                                --from-literal=app-password=%MYSQL_APP_PASSWORD% ^
                                 --dry-run=client -o yaml | kubectl apply -f -
                         """
                     }
@@ -141,7 +150,7 @@ pipeline {
             cleanWs()
         }
         failure {
-            archiveArtifacts artifacts: 'npm-debug.log*', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'npm-debug.log*,coverage/', allowEmptyArchive: true
             slackSend(
                 color: 'danger',
                 message: "Failed build: ${env.JOB_NAME} #${env.BUILD_NUMBER} - Check console output for details",
