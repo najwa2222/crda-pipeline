@@ -40,19 +40,18 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('SonarQube') {
-                    withCredentials([string(credentialsId: SONAR_TOKEN_CREDENTIALS_ID, variable: 'SONAR_TOKEN')]) {
-                        bat """
-                            sonar-scanner.bat ^
-                            -Dsonar.projectKey=${SONAR_PROJECT_KEY} ^
-                            -Dsonar.projectName=${DOCKER_IMAGE} ^
-                            -Dsonar.sources=app.js,controllers,models,routes,utils ^
-                            -Dsonar.host.url=${SONAR_SERVER_URL} ^
-                            -Dsonar.login=${SONAR_TOKEN} ^
-                            -Dsonar.coverage.exclusions=**/test/**,**/node_modules/** ^
-                            -Dsonar.qualitygate.wait=true ^
-                            -Dsonar.exclusions=**/*.spec.js,**/*.test.js,public/**,kubernetes/**
-                        """
-                    }
+                withCredentials([string(credentialsId: SONAR_TOKEN_CREDENTIALS_ID, variable: 'SONAR_TOKEN')]) {
+                    bat """
+                    sonar-scanner.bat ^
+                    -Dsonar.projectKey=${SONAR_PROJECT_KEY} ^
+                    -Dsonar.projectName=${DOCKER_IMAGE} ^
+                    -Dsonar.sources=app.js,controllers,models,routes,utils ^
+                    -Dsonar.host.url=${SONAR_SERVER_URL} ^
+                    -Dsonar.token=${SONAR_TOKEN} ^ // Updated from login to token
+                    -Dsonar.qualitygate.wait=true ^
+                    -Dsonar.exclusions=**/*.spec.js,**/*.test.js,public/**,kubernetes/**
+                    """
+                }
                 }
             }
         }
