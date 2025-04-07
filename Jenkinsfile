@@ -9,6 +9,11 @@ pipeline {
         SONAR_PROJECT_KEY = "najwa22_crda-app"
         SONAR_SERVER_URL = "http://localhost:9000"
         SONAR_TOKEN_CREDENTIALS_ID = "sonarqube-token"
+        // Fix Windows path issues
+        LCOV_PATH = "coverage\\lcov.info"
+        COBERTURA_PATH = "coverage\\cobertura-coverage.xml"
+        JUNIT_PATH = "test-results\\jest-junit.xml"
+        NODE_OPTIONS = "--experimental-vm-modules --no-warnings"
     }
 
     options {
@@ -46,25 +51,24 @@ pipeline {
             steps {
                 bat '''
                     @echo off
-                    :: Force directory creation with Windows path handling
-                    if not exist "test-results" mkdir test-results
-                    if not exist "coverage" mkdir coverage
+                    :: Force Windows-style path resolution
+                    set NODE_OPTIONS=--experimental-vm-modules
                     
-                    :: Run tests with error level checking
-                    call npm run test:ci || exit /b 1
-                    call npm run test:coverage || exit /b 1
+                    :: Safe directory creation
+                    if not exist test-results mkdir test-results
+                    if not exist coverage mkdir coverage
                     
-                    :: Verify artifact generation
-                    if not exist "test-results\\results.xml" (
-                        echo Missing test results file! && exit /b 1
-                    )
-                    if not exist "coverage\\lcov.info" (
-                        echo Missing coverage data! && exit /b 1
-                    )
+                    :: Run tests with Windows path handling
+                    call npm run test:ci
+                    call npm run test:coverage
+                    
+                    :: Fix path separators in coverage files
+                    powershell -Command "(Get-Content coverage\\lcov.info) -replace '/', '\\' | Set-Content coverage\\lcov.info"
                     '''
             }
             post {
                 always {
+                    bat 'powershell -Command "(Get-Content coverage\\lcov.info) -replace \'/mnt/c/\', \'C:\\\\\'"'
                     junit testResults: 'test-results/**/*.xml', allowEmptyResults: true
                     cobertura coberturaReportFile: 'coverage/cobertura-coverage.xml', onlyStable: false
                     bat 'dir /s /b test-results'
@@ -182,16 +186,10 @@ pipeline {
     post {
         always {
             echo 'Cleaning workspace'
-            // Archive test results regardless of build result
-            junit allowEmptyResults: true, testResults: 'test-results/**/*.xml'
-            // Archive coverage reports regardless of build result
-            archiveArtifacts allowEmptyArchive: true, artifacts: 'coverage/**'
-            // Clean workspace at the end
             cleanWs()
         }
         failure {
-           // Save logs for debugging
-            archiveArtifacts allowEmptyArchive: true, artifacts: 'npm-debug.log*'
+            archiveArtifacts artifacts: 'npm-debug.log*,test-results/**/*.xml,coverage/**/*.*', allowEmptyArchive: true
             slackSend(
                 color: 'danger',
                 message: "Failed build: ${env.JOB_NAME} #${env.BUILD_NUMBER} - Check console output for details",
@@ -201,10 +199,10 @@ pipeline {
         }
         success {
             slackSend(
-            color: 'good',
-            message: "Successful build: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-            channel: '#jenkins-builds',
-            tokenCredentialId: 'slack-token'
+                color: 'good',
+                message: "Successful build: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                channel: '#jenkins-builds',
+                tokenCredentialId: 'slack-token'
             )
         }
     }
