@@ -5,9 +5,9 @@
   "main": "index.js",
   "scripts": {
     "start": "nodemon app.js",
-    "dev": "tailwindcss -i ./public/css/tailwind.css -o ./public/css/styles.css --watch",
-    "build": "tailwindcss -i ./public/css/tailwind.css -o ./public/css/styles.css --minify",
-    "lint": "eslint . --config eslint.config.js --fix",
+    "dev": "tailwindcss -i ./public/css/tailwind.css -o ./public/css/styles.css --watch --config tailwind.config.cjs",
+    "build": "tailwindcss -i ./public/css/tailwind.css -o ./public/css/styles.css --minify --config tailwind.config.cjs",
+    "lint": "eslint . --config .eslintrc.cjs --fix --ext .js,.cjs",
     "lint:fix": "eslint . --ext .js --config eslint.config.js --fix",
     "sonar": "sonar-scanner"
   },
@@ -27,6 +27,7 @@
     "@eslint/js": "^9.24.0",
     "autoprefixer": "^10.4.20",
     "eslint": "^9.24.0",
+    "globals": "^16.0.0",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1"
   }

@@ -1,9 +1,11 @@
-const express = require('express');
-const { engine } = require('express-handlebars');
-const mysql = require('mysql');
-const cors = require('cors');
-const session = require('express-session');
-import logger from './utils/logger';
+/* eslint-env node */
+// Replace all require() statements with imports
+import express from 'express';
+import { engine } from 'express-handlebars';
+import mysql from 'mysql2';
+import cors from 'cors';
+import session from 'express-session';
+import logger from './utils/logger.js';
 
 // Initialize the Express application
 const app = express();
@@ -512,7 +514,7 @@ app.post('/admin/reject-account/:id', isAuthenticated, isDirecteur, (req, res) =
 /* ====== Error Handling ====== */
 
 // Global error handler for API errors
-app.use((error, req, res, next) => {
+app.use((error, req, res) => {
   res.status(error.status || 500).json({ message: error.message || 'Erreur interne du serveur' });
 });
 
@@ -524,7 +526,7 @@ app.use((req, res, next) => {
 });
 
 // Final error handler for rendering error pages
-app.use((err, req, res, next) => {
+app.use((err, req, res) => {
   console.error('Global Error:', err);
   res.status(500).render('error', {
     message: 'حدث خطأ غير متوقع',
