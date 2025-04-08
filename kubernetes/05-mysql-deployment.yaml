@@ -61,27 +61,24 @@ spec:
         - name: mysql-init-script
           mountPath: /docker-entrypoint-initdb.d
         
-        # Fixed liveness probe with credentials
+        # Liveness probe using shell for variable substitution
         livenessProbe:
           exec:
             command:
-            - mysqladmin
-            - ping
-            - "-u$(MYSQL_USER)"
-            - "-p$(MYSQL_PASSWORD)"
+            - sh
+            - -c
+            - "mysqladmin ping -u$MYSQL_USER -p$MYSQL_PASSWORD"
           initialDelaySeconds: 45
           periodSeconds: 15
           timeoutSeconds: 5
         
-        # Add readiness probe
+        # Readiness probe using shell for variable substitution
         readinessProbe:
           exec:
             command:
-            - mysql
-            - "-u$(MYSQL_USER)"
-            - "-p$(MYSQL_PASSWORD)"
-            - "-e"
-            - "SELECT 1"
+            - sh
+            - -c
+            - "mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'SELECT 1'"
           initialDelaySeconds: 15
           periodSeconds: 10
 
