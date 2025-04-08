@@ -3,5 +3,4 @@ kind: Namespace
 metadata:
   name: crda-namespace
   labels:
-    env: production
-    team: devops
+    name: crda-namespace

@@ -4,14 +4,9 @@ metadata:
   name: app-service
   namespace: crda-namespace
 spec:
-  type: LoadBalancer
   selector:
     app: crda-app
-    tier: backend
   ports:
-    - name: http
-      port: 80
-      targetPort: 4200
-    - name: metrics
-      port: 9100
-      targetPort: 9100
+  - port: 80
+    targetPort: 4200
+  type: LoadBalancer

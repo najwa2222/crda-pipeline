@@ -577,8 +577,8 @@ app.use((req, res, next) => {
 // Start the server after DB connection is established
 initializeDatabase().then(() => {
   const PORT = process.env.PORT || 4200;
-  app.listen(PORT, () => {
-    logger.info(`Server running on port ${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    logger.info(`Server running on port ${PORT} (bound to 0.0.0.0)`);
   });
 });
 

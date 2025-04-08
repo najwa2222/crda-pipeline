@@ -54,4 +54,4 @@ HEALTHCHECK --interval=30s --timeout=5s \
   CMD curl -f http://localhost:3000/health || exit 1
 
 # Startup command
-CMD ["sh", "-c", "wait-for ${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306} --timeout=300 -- node app.js"]
+CMD ["node", "app.js"]

@@ -4,9 +4,9 @@ metadata:
   name: mysql-pvc
   namespace: crda-namespace
 spec:
+  storageClassName: manual
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
-  storageClassName: standard
+      storage: 1Gi

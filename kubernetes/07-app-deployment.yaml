@@ -4,60 +4,57 @@ metadata:
   name: app-deployment
   namespace: crda-namespace
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
-      app: crda-app      # These labels must match
-      tier: backend      # the ones in template.metadata.labels
-  strategy:
-    rollingUpdate:
-      maxSurge: 2
-      maxUnavailable: 1
+      app: crda-app
   template:
-    metadata:  # Added metadata section with labels
+    metadata:
       labels:
-        app: crda-app    # Must match the selector's matchLabels
-        tier: backend
+        app: crda-app
     spec:
-      initContainers:
-      - name: db-check
-        image: busybox:1.35
-        command: ['sh', '-c', 'until nc -zw 2 mysql-service 3306; do echo "Waiting for DB"; sleep 2; done']
       containers:
-      - name: app
+      - name: crda-app
         image: najwa22/crda-app:latest
+        imagePullPolicy: Always
         ports:
-        - containerPort: 3000
+        - containerPort: 4200
         env:
-        - name: NODE_ENV
-          value: "production"
+        - name: PORT
+          value: "4200"
         - name: MYSQL_HOST
-          value: "mysql-service"       # Service name for MySQL
+          value: "mysql-service"
+        - name: MYSQL_PORT
+          value: "3306"
+        - name: MYSQL_DATABASE
+          value: "base_crda"  # Changed to match your schema
         - name: MYSQL_USER
-          value: "app_user"            # From MySQL deployment
+          value: "crda_user"  # Changed to match user created in init script
         - name: MYSQL_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: mysql-secret       # Must match the secret name
-              key: app-password        # Key holding app_user's password
-        - name: MYSQL_DATABASE
-          value: "base_crda"           # Database name from MySQL deployment
-        startupProbe:
-          httpGet:
-            path: /health
-            port: 3000
-          initialDelaySeconds: 60  # Give the app more time to start
-          periodSeconds: 10
-          failureThreshold: 5      # Reduce failure threshold
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 3000
-          initialDelaySeconds: 30  # Delay longer before checking
-          periodSeconds: 10
+              name: mysql-secret
+              key: app-password
+        - name: SESSION_SECRET
+          value: "secure-session-key-for-production"
+        - name: NODE_ENV
+          value: "production"
+        resources:
+          limits:
+            cpu: "0.5"
+            memory: "512Mi"
+          requests:
+            cpu: "0.2"
+            memory: "256Mi"
         livenessProbe:
           httpGet:
             path: /health
-            port: 3000
-          initialDelaySeconds: 90  # Allow even more time for startup
-          periodSeconds: 15
+            port: 4200
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 4200
+          initialDelaySeconds: 5
+          periodSeconds: 2

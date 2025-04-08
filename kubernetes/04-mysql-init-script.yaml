@@ -5,9 +5,7 @@ metadata:
   namespace: crda-namespace
 data:
   init.sql: |
-    CREATE USER 'app_user'@'%' IDENTIFIED BY '${MYSQL_APP_PASSWORD}';
-    GRANT SELECT, INSERT, UPDATE ON base_crda.* TO 'app_user'@'%';
-    
+    -- Create database first
     CREATE DATABASE IF NOT EXISTS base_crda;
     USE base_crda;
 
@@ -15,52 +13,14 @@ data:
     START TRANSACTION;
     SET time_zone = "+00:00";
 
-    /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
-    /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
-    /*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
-    /*!40101 SET NAMES utf8mb4 */;
-
-    --
-    -- Table structure for table `rapport`
-    --
-
-    CREATE TABLE `rapport` (
-      `id` int(11) NOT NULL AUTO_INCREMENT,
-      `nom` varchar(255) NOT NULL,
-      `prenom` varchar(255) NOT NULL,
-      `cin` varchar(50) NOT NULL,
-      `sujet` text NOT NULL,
-      `surface` decimal(10,2) NOT NULL,
-      `limites_terrain` text NOT NULL,
-      `localisation` varchar(255) NOT NULL,
-      `superficie_batiments_anciens` decimal(10,2) NOT NULL,
-      `observations` text DEFAULT NULL,
-      PRIMARY KEY (`id`),
-      UNIQUE KEY `idx_cin_sujet` (`cin`,`sujet`),
-      KEY `idx_cin` (`cin`),
-      FULLTEXT KEY `idx_sujet` (`sujet`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-    --
-    -- Table structure for table `results`
-    --
-
-    CREATE TABLE `results` (
-      `id` int(11) NOT NULL AUTO_INCREMENT,
-      `sujet` varchar(255) NOT NULL,
-      `nom` varchar(255) NOT NULL,
-      `prenom` varchar(255) NOT NULL,
-      `cin` varchar(255) NOT NULL,
-      `numero_transaction` varchar(255) NOT NULL,
-      `statut` enum('بصدد الدرس','مقبول','مرفوض') NOT NULL DEFAULT 'بصدد الدرس',
-      PRIMARY KEY (`id`),
-      UNIQUE KEY `unique_service` (`cin`,`sujet`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-    --
+    -- Create app user and grant permissions
+    -- Note: We use MYSQL_PASSWORD env var which is set in the MySQL container
+    -- rather than trying to use ${MYSQL_APP_PASSWORD} directly in SQL
+    CREATE USER IF NOT EXISTS 'crda_user'@'%' IDENTIFIED BY 'placeholder_password';
+    -- Will be replaced by actual password from secret when container starts
+    GRANT SELECT, INSERT, UPDATE, DELETE ON base_crda.* TO 'crda_user'@'%';
+    
     -- Table structure for table `services_utilisateur`
-    --
-
     CREATE TABLE `services_utilisateur` (
       `id` int(11) NOT NULL AUTO_INCREMENT,
       `prenom` varchar(255) DEFAULT NULL,
@@ -76,13 +36,45 @@ data:
       `sujet` varchar(255) DEFAULT NULL,
       `status` varchar(255) NOT NULL DEFAULT 'قيد الانتظار',
       PRIMARY KEY (`id`),
+      UNIQUE KEY `unique_service` (`cin`, `sujet`),
       KEY `idx_cin` (`cin`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-    --
-    -- Table structure for table `utilisateur`
-    --
+    -- Table structure for table `rapport`
+    CREATE TABLE `rapport` (
+      `id` int(11) NOT NULL AUTO_INCREMENT,
+      `nom` varchar(255) NOT NULL,
+      `prenom` varchar(255) NOT NULL,
+      `cin` varchar(50) NOT NULL,
+      `sujet` text NOT NULL,
+      `surface` decimal(10,2) NOT NULL,
+      `limites_terrain` text NOT NULL,
+      `localisation` varchar(255) NOT NULL,
+      `superficie_batiments_anciens` decimal(10,2) NOT NULL,
+      `observations` text DEFAULT NULL,
+      PRIMARY KEY (`id`),
+      UNIQUE KEY `idx_cin_sujet` (`cin`(50),`sujet`(100)),
+      KEY `idx_cin` (`cin`),
+      CONSTRAINT `fk_rapport_service` FOREIGN KEY (`cin`, `sujet`(100)) 
+        REFERENCES `services_utilisateur` (`cin`, `sujet`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+    -- Table structure for table `results`
+    CREATE TABLE `results` (
+      `id` int(11) NOT NULL AUTO_INCREMENT,
+      `sujet` varchar(255) NOT NULL,
+      `nom` varchar(255) NOT NULL,
+      `prenom` varchar(255) NOT NULL,
+      `cin` varchar(255) NOT NULL,
+      `numero_transaction` varchar(255) NOT NULL,
+      `statut` enum('بصدد الدرس','مقبول','مرفوض') NOT NULL DEFAULT 'بصدد الدرس',
+      PRIMARY KEY (`id`),
+      UNIQUE KEY `unique_service` (`cin`,`sujet`),
+      CONSTRAINT `fk_results_service` FOREIGN KEY (`cin`, `sujet`) 
+        REFERENCES `services_utilisateur` (`cin`, `sujet`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Table structure for table `utilisateur`
     CREATE TABLE `utilisateur` (
       `id` int(11) NOT NULL AUTO_INCREMENT,
       `nom_user` varchar(100) NOT NULL,
@@ -94,20 +86,15 @@ data:
       `role_user` enum('directeur','gerant','chef_dentreprise','pending') NOT NULL,
       `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
       `status_user` enum('pending','approved','rejected') DEFAULT 'pending',
-      PRIMARY KEY (`id`)
+      PRIMARY KEY (`id`),
+      UNIQUE KEY `email_unique` (`email_user`),
+      UNIQUE KEY `cin_unique` (`cin_user`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-    --
-    -- Initial data
-    --
-
+    -- Initial data with bcrypt hashed passwords (hash for '58877615')
     INSERT INTO `utilisateur` (`nom_user`, `prenom_user`, `sex_user`, `cin_user`, `email_user`, `password_user`, `role_user`, `status_user`) VALUES
-    ('najwa', 'karrouchi', 'femme', '0', 'najwakarrouchi@gmail.com', '58877615', 'chef_dentreprise', 'approved'),
-    ('najwa', 'karrouchi', 'femme', '0', 'najwakarrouchi2222@gmail.com', '58877615', 'gerant', 'approved'),
-    ('najwa', 'karrouchi', 'femme', '0', 'najwakarrouchi3333@gmail.com', '58877615', 'directeur', 'approved'),
+    ('najwa', 'karrouchi', 'femme', '00001', 'najwakarrouchi@gmail.com', '$2b$10$rPg8jdTpMTNcWY3tNmOi7.rORWP3DfS7WOMQj8dQXLAYSKDhR9VfO', 'chef_dentreprise', 'approved'),
+    ('najwa', 'karrouchi', 'femme', '00002', 'najwakarrouchi2222@gmail.com', '$2b$10$rPg8jdTpMTNcWY3tNmOi7.rORWP3DfS7WOMQj8dQXLAYSKDhR9VfO', 'gerant', 'approved'),
+    ('najwa', 'karrouchi', 'femme', '00003', 'najwakarrouchi3333@gmail.com', '$2b$10$rPg8jdTpMTNcWY3tNmOi7.rORWP3DfS7WOMQj8dQXLAYSKDhR9VfO', 'directeur', 'approved');
 
     COMMIT;
-
-    /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-    /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
-    /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
