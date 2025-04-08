@@ -1,6 +1,6 @@
 pipeline {
     agent any
-    
+
     environment {
         DOCKER_IMAGE = "najwa22/crda-app"
         DOCKER_TAG = "${env.BUILD_NUMBER}"
@@ -34,7 +34,6 @@ pipeline {
 
         stage('Static Code Analysis') {
             steps {
-                // Explicitly specify config file path
                 bat 'npm run lint -- --config .eslintrc.cjs'
                 bat 'npm run lint:fix -- --config .eslintrc.cjs'
             }
@@ -122,7 +121,20 @@ pipeline {
                         ]
 
                         manifestOrder.each { file ->
-                            bat "kubectl apply -f ${file} --namespace ${KUBE_NAMESPACE}"
+                            if (file == '02-mysql-pv.yaml') {
+                                def checkPV = bat(
+                                    script: "kubectl get pv mysql-pv",
+                                    returnStatus: true
+                                )
+                                if (checkPV != 0) {
+                                    bat "kubectl apply -f ${file} --namespace ${KUBE_NAMESPACE}"
+                                } else {
+                                    echo "PersistentVolume 'mysql-pv' already exists. Skipping creation."
+                                }
+                            } else {
+                                bat "kubectl apply -f ${file} --namespace ${KUBE_NAMESPACE}"
+                            }
+
                             if (file =~ /deployment.yaml$/) {
                                 def resourceType = file.contains('mysql') ? 'deployment/mysql-deployment' : 'deployment/app-deployment'
                                 bat "kubectl rollout status ${resourceType} --namespace ${KUBE_NAMESPACE} --timeout=300s"

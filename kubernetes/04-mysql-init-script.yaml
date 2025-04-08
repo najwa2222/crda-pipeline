@@ -14,12 +14,9 @@ data:
     SET time_zone = "+00:00";
 
     -- Create app user and grant permissions
-    -- Note: We use MYSQL_PASSWORD env var which is set in the MySQL container
-    -- rather than trying to use ${MYSQL_APP_PASSWORD} directly in SQL
     CREATE USER IF NOT EXISTS 'crda_user'@'%' IDENTIFIED BY 'placeholder_password';
-    -- Will be replaced by actual password from secret when container starts
     GRANT SELECT, INSERT, UPDATE, DELETE ON base_crda.* TO 'crda_user'@'%';
-    
+
     -- Table structure for table `services_utilisateur`
     CREATE TABLE `services_utilisateur` (
       `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -46,16 +43,16 @@ data:
       `nom` varchar(255) NOT NULL,
       `prenom` varchar(255) NOT NULL,
       `cin` varchar(50) NOT NULL,
-      `sujet` text NOT NULL,
+      `sujet` varchar(255) NOT NULL,
       `surface` decimal(10,2) NOT NULL,
       `limites_terrain` text NOT NULL,
       `localisation` varchar(255) NOT NULL,
       `superficie_batiments_anciens` decimal(10,2) NOT NULL,
       `observations` text DEFAULT NULL,
       PRIMARY KEY (`id`),
-      UNIQUE KEY `idx_cin_sujet` (`cin`(50),`sujet`(100)),
+      UNIQUE KEY `idx_cin_sujet` (`cin`, `sujet`),
       KEY `idx_cin` (`cin`),
-      CONSTRAINT `fk_rapport_service` FOREIGN KEY (`cin`, `sujet`(100)) 
+      CONSTRAINT `fk_rapport_service` FOREIGN KEY (`cin`, `sujet`)
         REFERENCES `services_utilisateur` (`cin`, `sujet`) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -70,7 +67,7 @@ data:
       `statut` enum('بصدد الدرس','مقبول','مرفوض') NOT NULL DEFAULT 'بصدد الدرس',
       PRIMARY KEY (`id`),
       UNIQUE KEY `unique_service` (`cin`,`sujet`),
-      CONSTRAINT `fk_results_service` FOREIGN KEY (`cin`, `sujet`) 
+      CONSTRAINT `fk_results_service` FOREIGN KEY (`cin`, `sujet`)
         REFERENCES `services_utilisateur` (`cin`, `sujet`) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
