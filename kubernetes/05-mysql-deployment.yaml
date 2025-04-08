@@ -15,6 +15,13 @@ spec:
       labels:
         app: mysql
     spec:
+      initContainers:
+      - name: fix-permissions
+        image: busybox
+        command: ["sh", "-c", "chown -R 999:999 /var/lib/mysql"]
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
       containers:
       - name: mysql
         image: mysql:8.0
