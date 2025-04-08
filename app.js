@@ -134,6 +134,10 @@ app.get('/login', (req, res) => {
 });
 
 app.post('/login', async (req, res) => {
+  if (!connection) {
+    return res.status(500).send('Database connection is not available at the moment.');
+  }
+
   const { email_user, password_user } = req.body;
   try {
     const [users] = await connection.query('SELECT * FROM utilisateur WHERE email_user = ?', [email_user]);
@@ -176,7 +180,10 @@ app.get('/getservices', isAuthenticated, isChef, async (req, res) => {
 app.post('/addservice', async (req, res) => {
   const fields = sanitizeServiceFields(req.body);
   try {
-    await connection.query(`INSERT INTO services_utilisateur (sujet, prenom, nom, cin, numero_transaction, certificat_propriete_terre, copie_piece_identite_fermier, copie_piece_identite_nationale, demande_but, copie_contrat_location_terrain, autres_documents) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, Object.values(fields));
+    await connection.query(`
+      INSERT INTO services_utilisateur (sujet, prenom, nom, cin, numero_transaction, certificat_propriete_terre, copie_piece_identite_fermier, copie_piece_identite_nationale, demande_but, copie_contrat_location_terrain, autres_documents)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, Object.values(fields));
     res.redirect('/getservices');
   } catch (err) {
     logger.error(`Database Error: ${err.message}`);
@@ -203,8 +210,13 @@ app.post('/addreport', isAuthenticated, async (req, res) => {
   const reportData = req.body;
   try {
     await connection.beginTransaction();
-    await connection.query(`INSERT INTO rapport (cin, sujet, nom, prenom, surface, limites_terrain, localisation, superficie_batiments_anciens, observations) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, Object.values(reportData));
-    await connection.query(`UPDATE services_utilisateur SET status = 'تم' WHERE cin = ? AND sujet = ?`, [reportData.cin, reportData.sujet]);
+    await connection.query(`
+      INSERT INTO rapport (cin, sujet, nom, prenom, surface, limites_terrain, localisation, superficie_batiments_anciens, observations)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, Object.values(reportData));
+    await connection.query(`
+      UPDATE services_utilisateur SET status = 'تم' WHERE cin = ? AND sujet = ?
+    `, [reportData.cin, reportData.sujet]);
     await connection.commit();
     res.redirect('/getreports');
   } catch (err) {
@@ -217,7 +229,13 @@ app.post('/addreport', isAuthenticated, async (req, res) => {
 // Results
 app.get('/results', isAuthenticated, isDirecteur, async (req, res) => {
   try {
-    const [services] = await connection.query(`SELECT s.*, r.statut, rap.id AS report_id FROM services_utilisateur s LEFT JOIN results r ON s.cin = r.cin AND s.sujet = r.sujet INNER JOIN rapport rap ON s.cin = rap.cin AND s.sujet = rap.sujet ORDER BY s.id DESC`);
+    const [services] = await connection.query(`
+      SELECT s.*, r.statut, rap.id AS report_id 
+      FROM services_utilisateur s
+      LEFT JOIN results r ON s.cin = r.cin AND s.sujet = r.sujet
+      INNER JOIN rapport rap ON s.cin = rap.cin AND s.sujet = rap.sujet
+      ORDER BY s.id DESC
+    `);
     res.render('results', { title: 'النتائج النهائية', services });
   } catch (err) {
     logger.error(`Database Error: ${err.message}`);
@@ -234,7 +252,10 @@ app.post('/register', async (req, res) => {
     const [existing] = await connection.query('SELECT * FROM utilisateur WHERE email_user = ? OR cin_user = ?', [userData.email_user, userData.cin_user]);
     if (existing.length) return res.redirect('/register?error=exists');
     const hashedPassword = await bcrypt.hash(userData.password_user, 10);
-    await connection.query(`INSERT INTO utilisateur (email_user, password_user, role_user, status_user, nom_user, prenom_user, sex_user, cin_user) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)`, [userData.email_user, hashedPassword, userData.role_user, userData.nom_user, userData.prenom_user, userData.sex_user, userData.cin_user]);
+    await connection.query(`
+      INSERT INTO utilisateur (email_user, password_user, role_user, status_user, nom_user, prenom_user, sex_user, cin_user)
+      VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)
+    `, [userData.email_user, hashedPassword, userData.role_user, userData.nom_user, userData.prenom_user, userData.sex_user, userData.cin_user]);
     res.redirect('/pending_approval');
   } catch (err) {
     logger.error(`Database Error: ${err.message}`);
