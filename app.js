@@ -63,7 +63,7 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'default-secure-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
-  cookie: { 
+  cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
     sameSite: 'strict'
@@ -107,7 +107,6 @@ const createRoleCheck = (...allowedRoles) => (req, res, next) => {
 const isChef = createRoleCheck('chef_dentreprise');
 const isGerant = createRoleCheck('gerant');
 const isDirecteur = createRoleCheck('directeur');
-const isGerantOrDirecteur = createRoleCheck('gerant', 'directeur');
 
 /* ====================== ROUTES ====================== */
 
@@ -122,49 +121,33 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// Core Application Routes
 app.get('/', (req, res) => res.render('index', { title: 'Home', layout: 'main' }));
 app.get('/about', (req, res) => res.render('about', { title: 'من نحن', user: req.session.user }));
 app.get('/services', isAuthenticated, isChef, (req, res) => res.render('services', { title: 'المحتوى', layout: 'main', user: req.session.user }));
 app.get('/afficher', isAuthenticated, (req, res) => res.render('afficher', { title: 'المحتوى', layout: 'main', user: req.session.user }));
 
-// Authentication Routes
-app.get('/login', (req, res) => res.render('login', {
-  title: 'تسجيل الدخول',
-  layout: 'main',
-  error: req.query.error,
-  success: req.query.success,
-}));
+// Auth
+app.get('/login', (req, res) => {
+  res.render('login', {
+    title: 'تسجيل الدخول', layout: 'main', error: req.query.error, success: req.query.success
+  });
+});
 
 app.post('/login', async (req, res) => {
   const { email_user, password_user } = req.body;
-  
   try {
-    const [users] = await connection.query(
-      'SELECT * FROM utilisateur WHERE email_user = ?',
-      [email_user]
-    );
-
-    if (!users.length) return redirectError('/login', 'invalid_credentials');
-    
+    const [users] = await connection.query('SELECT * FROM utilisateur WHERE email_user = ?', [email_user]);
+    if (!users.length) return res.redirect('/login?error=invalid_credentials');
     const user = users[0];
     if (user.status_user !== 'approved') return res.redirect('/unapproved_login');
-
     const match = await bcrypt.compare(password_user, user.password_user);
-    if (!match) return redirectError('/login', 'invalid_credentials');
-
-    req.session.user = {
-      id: user.id,
-      email_user: user.email_user,
-      role_user: user.role_user,
-      nom_user: user.nom_user,
-      prenom_user: user.prenom_user,
-    };
-
-    redirectByRole(user.role_user, res);
+    if (!match) return res.redirect('/login?error=invalid_credentials');
+    req.session.user = { id: user.id, email_user: user.email_user, role_user: user.role_user, nom_user: user.nom_user, prenom_user: user.prenom_user };
+    const routes = { chef_dentreprise: '/getservices', gerant: '/getreports', directeur: '/results' };
+    res.redirect(routes[user.role_user] || '/login?error=invalid_role');
   } catch (err) {
     logger.error('Login error:', err.message);
-    redirectError('/login', 'server_error');
+    res.redirect('/login?error=server_error');
   }
 });
 
@@ -175,7 +158,7 @@ app.get('/logout', (req, res) => {
   });
 });
 
-// Service Management Routes
+// Service Management
 app.get('/getservices', isAuthenticated, isChef, async (req, res) => {
   try {
     const [services] = await connection.query(`
@@ -183,166 +166,108 @@ app.get('/getservices', isAuthenticated, isChef, async (req, res) => {
       FROM services_utilisateur s
       LEFT JOIN rapport r ON s.cin = r.cin AND s.sujet = r.sujet
     `);
-    
-    res.render('afficher', { 
-      title: 'المحتوى',
-      services,
-      helpers: { eq: (a, b) => a === b }
-    });
+    res.render('afficher', { title: 'المحتوى', services });
   } catch (err) {
-    handleDatabaseError(res, err, '/getservices');
+    logger.error(`Database Error: ${err.message}`);
+    res.redirect('/getservices?error=database_error');
   }
 });
 
 app.post('/addservice', async (req, res) => {
   const fields = sanitizeServiceFields(req.body);
-  
   try {
-    const [result] = await connection.query(
-      `INSERT INTO services_utilisateur 
-      (sujet, prenom, nom, cin, numero_transaction, 
-       certificat_propriete_terre, copie_piece_identite_fermier, 
-       copie_piece_identite_nationale, demande_but, 
-       copie_contrat_location_terrain, autres_documents) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      Object.values(fields)
-    );
-    
-    logger.info(`New service added: ${result.insertId}`);
+    await connection.query(`INSERT INTO services_utilisateur (sujet, prenom, nom, cin, numero_transaction, certificat_propriete_terre, copie_piece_identite_fermier, copie_piece_identite_nationale, demande_but, copie_contrat_location_terrain, autres_documents) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, Object.values(fields));
     res.redirect('/getservices');
   } catch (err) {
-    handleDatabaseError(res, err, '/services');
+    logger.error(`Database Error: ${err.message}`);
+    res.redirect('/services?error=database_error');
   }
 });
 
-// Report Management Routes
+// Report Management
 app.get('/report', isAuthenticated, isGerant, (req, res) => {
-  res.render('report', {
-    title: 'إنشاء تقرير',
-    layout: 'main',
-    isViewing: false,
-    ...req.query,
-    user: req.session.user
-  });
+  res.render('report', { title: 'إنشاء تقرير', layout: 'main', isViewing: false, ...req.query, user: req.session.user });
+});
+
+app.get('/getreports', isAuthenticated, isGerant, async (req, res) => {
+  try {
+    const [reports] = await connection.query('SELECT * FROM rapport ORDER BY id DESC');
+    res.render('getreports', { title: 'قائمة التقارير', reports });
+  } catch (err) {
+    logger.error(`Database Error: ${err.message}`);
+    res.redirect('/getreports?error=database_error');
+  }
 });
 
 app.post('/addreport', isAuthenticated, async (req, res) => {
-  const reportData = sanitizeReportFields(req.body);
-  
+  const reportData = req.body;
   try {
     await connection.beginTransaction();
-    
-    // Insert report
-    const [report] = await connection.query(
-      `INSERT INTO rapport 
-      (cin, sujet, nom, prenom, surface, limites_terrain, 
-       localisation, superficie_batiments_anciens, observations)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      Object.values(reportData)
-    );
-
-    // Update service status
-    await connection.query(
-      `UPDATE services_utilisateur 
-      SET status = 'تم' 
-      WHERE cin = ? AND sujet = ?`,
-      [reportData.cin, reportData.sujet]
-    );
-
+    await connection.query(`INSERT INTO rapport (cin, sujet, nom, prenom, surface, limites_terrain, localisation, superficie_batiments_anciens, observations) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, Object.values(reportData));
+    await connection.query(`UPDATE services_utilisateur SET status = 'تم' WHERE cin = ? AND sujet = ?`, [reportData.cin, reportData.sujet]);
     await connection.commit();
     res.redirect('/getreports');
   } catch (err) {
     await connection.rollback();
-    handleDatabaseError(res, err, `/report?cin=${reportData.cin}&sujet=${reportData.sujet}`);
+    logger.error(`Database Error: ${err.message}`);
+    res.redirect(`/report?cin=${reportData.cin}&sujet=${reportData.sujet}&error=database_error`);
   }
 });
 
-// Result Management Routes
+// Results
 app.get('/results', isAuthenticated, isDirecteur, async (req, res) => {
   try {
-    const [services] = await connection.query(`
-      SELECT s.*, r.statut, rap.id AS report_id
-      FROM services_utilisateur s
-      LEFT JOIN results r ON s.cin = r.cin AND s.sujet = r.sujet
-      INNER JOIN rapport rap ON s.cin = rap.cin AND s.sujet = rap.sujet
-      ORDER BY s.id DESC
-    `);
-    
-    res.render('results', {
-      title: 'النتائج النهائية',
-      services,
-      helpers: { statusClass: getStatusClass }
-    });
+    const [services] = await connection.query(`SELECT s.*, r.statut, rap.id AS report_id FROM services_utilisateur s LEFT JOIN results r ON s.cin = r.cin AND s.sujet = r.sujet INNER JOIN rapport rap ON s.cin = rap.cin AND s.sujet = rap.sujet ORDER BY s.id DESC`);
+    res.render('results', { title: 'النتائج النهائية', services });
   } catch (err) {
-    handleDatabaseError(res, err, '/results');
+    logger.error(`Database Error: ${err.message}`);
+    res.redirect('/results?error=database_error');
   }
 });
 
-// Registration System
-app.get('/register', (req, res) => res.render('register', {
-  title: 'تسجيل جديد',
-  layout: 'main',
-  error: req.query.error,
-  success: req.query.success,
-}));
+// Registration
+app.get('/register', (req, res) => res.render('register', { title: 'تسجيل جديد', layout: 'main', error: req.query.error, success: req.query.success }));
 
 app.post('/register', async (req, res) => {
-  const userData = sanitizeUserInput(req.body);
-  
+  const userData = req.body;
   try {
-    const [existing] = await connection.query(
-      'SELECT * FROM utilisateur WHERE email_user = ? OR cin_user = ?',
-      [userData.email_user, userData.cin_user]
-    );
-    
-    if (existing.length) return redirectError('/register', 'exists');
-
+    const [existing] = await connection.query('SELECT * FROM utilisateur WHERE email_user = ? OR cin_user = ?', [userData.email_user, userData.cin_user]);
+    if (existing.length) return res.redirect('/register?error=exists');
     const hashedPassword = await bcrypt.hash(userData.password_user, 10);
-    
-    await connection.query(
-      `INSERT INTO utilisateur 
-      (email_user, password_user, role_user, status_user, 
-       nom_user, prenom_user, sex_user, cin_user) 
-      VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)`,
-      [userData.email_user, hashedPassword, userData.role_user,
-       userData.nom_user, userData.prenom_user, userData.sex_user, userData.cin_user]
-    );
-    
+    await connection.query(`INSERT INTO utilisateur (email_user, password_user, role_user, status_user, nom_user, prenom_user, sex_user, cin_user) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)`, [userData.email_user, hashedPassword, userData.role_user, userData.nom_user, userData.prenom_user, userData.sex_user, userData.cin_user]);
     res.redirect('/pending_approval');
   } catch (err) {
-    handleDatabaseError(res, err, '/register');
+    logger.error(`Database Error: ${err.message}`);
+    res.redirect('/register?error=database_error');
   }
 });
 
-// Admin Routes
+// Pending & Unapproved Pages
+app.get('/pending_approval', (req, res) => res.render('pending_approval', { title: 'تم التسجيل', message: 'شكراً لتسجيلك. سيتم مراجعة طلبك قريباً.' }));
+app.get('/unapproved_login', (req, res) => res.render('unapproved_login', { title: 'لم يتم التحقق', message: 'حسابك لم يتم الموافقة عليه بعد. يرجى المحاولة لاحقاً.' }));
+
+// Admin
 app.get('/admin/pending-accounts', isAuthenticated, isDirecteur, async (req, res) => {
   try {
-    const [accounts] = await connection.query(
-      'SELECT id, email_user, nom_user, prenom_user, role_user FROM utilisateur WHERE status_user = "pending"'
-    );
+    const [accounts] = await connection.query('SELECT id, email_user, nom_user, prenom_user, role_user FROM utilisateur WHERE status_user = "pending"');
     res.render('admin/pending-accounts', { title: 'الحسابات المعلقة', accounts });
   } catch (err) {
-    handleDatabaseError(res, err, '/admin/pending-accounts');
+    logger.error(`Database Error: ${err.message}`);
+    res.redirect('/admin/pending-accounts?error=database_error');
   }
 });
 
 // Error Handling
 app.use((err, req, res, next) => {
   logger.error(`Global Error: ${err.message}`);
-  res.status(500).render('error', {
-    message: 'حدث خطأ غير متوقع',
-    error: process.env.NODE_ENV === 'development' ? err : {}
-  });
+  res.status(500).render('error', { message: 'حدث خطأ غير متوقع', error: process.env.NODE_ENV === 'development' ? err : {} });
 });
 
 app.use((req, res) => {
-  res.status(404).render('error', { 
-    message: 'Ressource non trouvée',
-    error: { status: 404 }
-  });
+  res.status(404).render('error', { message: 'Ressource non trouvée', error: { status: 404 } });
 });
 
-// Helper Functions
+// Helpers
 function sanitizeServiceFields(body) {
   return {
     sujet: body.sujet,
@@ -357,20 +282,6 @@ function sanitizeServiceFields(body) {
     copie_contrat_location_terrain: body.copie_contrat_location_terrain === 'true',
     autres_documents: body.autres_documents === 'true'
   };
-}
-
-function redirectByRole(role, res) {
-  const routes = {
-    chef_dentreprise: '/getservices',
-    gerant: '/getreports',
-    directeur: '/results'
-  };
-  res.redirect(routes[role] || '/login?error=invalid_role');
-}
-
-async function handleDatabaseError(res, err, redirectPath) {
-  logger.error(`Database Error: ${err.message}`);
-  res.redirect(`${redirectPath}?error=database_error`);
 }
 
 // Initialize and Start Server
